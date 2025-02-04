@@ -1,0 +1,54 @@
+; Define variables for inlet flow angle and speed
+(define inlet_speeds '(5 50))                  ; List of inlet speeds (m/s)
+(define inlet_angles '(0 5 10 15 20 25))       ; List of inlet angles (degrees)
+
+; Define surfaces for force calculation
+(define surfaces 7)  ; Replace with your surface name
+
+; Create output file for all results in the specified directory
+(ti-menu-load-string "!rm -f \"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/combined_results.txt\"")
+(ti-menu-load-string "!echo 'Speed,Angle,Fx,Fz,My,CaseFile' > \"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/combined_results.txt\"")
+
+; Loop through each combination of speed and angle
+(do ((i 0 (+ i 1))) ((= i (length inlet_speeds)))
+  (do ((j 0 (+ j 1))) ((= j (length inlet_angles)))
+    
+    ; Set inlet velocity components based on angle and speed
+    (define speed (list-ref inlet_speeds i))
+    (define angle (list-ref inlet_angles j))
+    
+    ; Corrected variable definitions for vel_x and vel_z
+    (define vel_x (* speed (sin (* angle (/ 3.14159 180))))) ; Lift direction (+X)
+    (define vel_z (* -1 (* speed (cos (* angle (/ 3.14159 180)))))) ; Drag direction (-Z)
+    
+    ; Apply boundary conditions
+    (ti-menu-load-string (format #f "/define/boundary-conditions/set/velocity-inlet inlet () () () ~f 0 ~f" vel_x vel_z))
+    
+    ; Run the simulation
+    (ti-menu-load-string "/solve/initialize/hybrid-initialization")
+    (ti-menu-load-string "/solve/iterate 200")
+    
+    ; Report forces in required directions
+    (define force_file (format #f "\"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/forces_~a_~a.txt\"" speed angle))
+    (ti-menu-load-string (format #f "/report/forces/wall-forces yes ~a ~a ()" force_file surfaces))
+    
+    ; Report moments (only My for pitch)
+    (define moment_file (format #f "\"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/moments_~a_~a.txt\"" speed angle))
+    (ti-menu-load-string (format #f "/report/forces/wall-moments yes ~a ~a () 0 0 0 0 1 0" moment_file surfaces))
+    
+    ; Extract and append results to the output file
+    (ti-menu-load-string (format #f "!awk '/Total Force Vector/ {getline; print ~a,~a,$2,$4}' ~a >> \"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/combined_results.txt\"" 
+                                 speed angle force_file))
+    (ti-menu-load-string (format #f "!awk '/Total Moment Vector/ {getline; print $4}' ~a >> \"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/combined_results.txt\"" 
+                                 moment_file))
+    
+    ; Save case and data files with a clear naming convention
+    (define case_file (format #f "\"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/case_~a_~a.cas.h5\"" speed angle))
+    (ti-menu-load-string (format #f "/file/write-case-data ~a ok" case_file))
+    
+    ; Append case file reference to the combined results
+    (ti-menu-load-string (format #f "!echo '~a,~a,~a' >> \"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/combined_results.txt\"" speed angle case_file))
+  ))
+
+; Final summary report
+(ti-menu-load-string "/report/summary yes \"C:/Users/Zian Liu/Desktop/Project/Rocket_Simulink/CFD_data/simulation_summary.htm\"")
