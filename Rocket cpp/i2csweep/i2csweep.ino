@@ -39,5 +39,4 @@ void loop() {
     Serial.println(" devices found");
   }
 
-  delay(1000); // Wait 1 second before scanning again
 }

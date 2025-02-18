@@ -115,9 +115,12 @@ void kalman_filter_fusion(float dt_us, float a_imu, float z_baro, float acc_std,
     float I_minus_KH[2][2] = {{1 - KH[0][0], -KH[0][1]},
                               {-KH[1][0], 1 - KH[1][1]}};
     float P_new[2][2];
-    mat_multiply22D(I_minus_KH, P, P_new); // P = (I - K * H) * P
-    memcpy(P, P_new, sizeof(P));
+    mat_multiply22D(I_minus_KH, P, P); // P = (I - K * H) * P
 
     // Copy output
-    memcpy(s_out, s, sizeof(s));
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 1; j++) {
+            s_out[i][j] = s[i][j];
+        }
+    }
 }

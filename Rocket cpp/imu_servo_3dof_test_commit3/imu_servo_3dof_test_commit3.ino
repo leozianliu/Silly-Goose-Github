@@ -21,7 +21,7 @@ const int servo3_iang = 75;
 const int servo4_iang = 90;
 
 const int servo_angle_max = 70;
-const float servo_ang_to_fin_ang = 0.35;
+const float servo_ang_to_fin_ang = 0.356;
 
 struct euler_t {
   float yaw;
