@@ -374,7 +374,8 @@ void loop() {
         Serial.print(initial_altitude);
         Serial.println(" meters");
       }
-    } else {
+    } 
+    else { // Already intialized, execute the rest
       // Remove the bias by subtracting the initial altitude
       float altitude = raw_altitude - initial_altitude;
       
@@ -382,23 +383,23 @@ void loop() {
       float acc_std = 0.01;
       float R = 0.01; // Measurement noise covariance
       kalman_filter_fusion(dt_us, acc_enu_z, altitude, acc_std, R, s_kalman);
-    }
-    
-    float alt_kalm = s_kalman[0][0];
-    float vert_spd = s_kalman[1][0];
 
-    if (Serial) {
-      Serial.print(t_now);           Serial.print(",");
-      Serial.print(x_pitch);          Serial.print(",");
-      Serial.print(y_roll);          Serial.print(",");
-      Serial.print(z_yaw);          Serial.print(",");
+      float alt_kalm = s_kalman[0][0];
+      float vert_spd = s_kalman[1][0];
 
-      Serial.print(enu_acc.x);          Serial.print(",");
-      Serial.print(enu_acc.y);          Serial.print(",");
-      Serial.print(enu_acc.z);          Serial.print(",");
+      if (Serial) {
+        // Serial.print(t_now);           Serial.print(",");
+        // Serial.print(x_pitch);          Serial.print(",");
+        // Serial.print(y_roll);          Serial.print(",");
+        // Serial.print(z_yaw);          Serial.print(",");
 
-      Serial.print(pressure_event.pressure * 100);     Serial.print(","); // Pressure in Pa
-      Serial.print(alt_kalm);      Serial.print(",");
-      Serial.println(vert_spd);
+        // Serial.print(enu_acc.x);          Serial.print(",");
+        // Serial.print(enu_acc.y);          Serial.print(",");
+        Serial.print(enu_acc.z);          Serial.print(",");
+
+        Serial.print(pressure_event.pressure * 100);     Serial.print(","); // Pressure in Pa
+        Serial.print(altitude);      Serial.print(",");
+        Serial.println(vert_spd);
+      }
     }
 }
