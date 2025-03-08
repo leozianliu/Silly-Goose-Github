@@ -6,9 +6,9 @@
 
 #define BNO08X_RESET -1
 
-const int n_samples = 1000;
+const int n_samples = 500;
 float R = 0.01; // Measurement noise covariance
-float acc_std = 0.1; // Acceleration noise standard deviation
+float acc_std = 0.08; // Acceleration noise standard deviation
 
 struct euler_t {
   float yaw;
@@ -71,12 +71,12 @@ void setup() {
   // Try to initialize BMP280
   while (!bmp_state) {
     Serial.println(F("Could not find any BMP280 sensor!"));
-    delay(10);
+    delay(100);
   }
 
   /* Default settings from Bosch 280 datasheet. */
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-                  Adafruit_BMP280::SAMPLING_X1,     /* Temp. oversampling */
+                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
                   Adafruit_BMP280::SAMPLING_X8,    /* Pressure oversampling */
                   Adafruit_BMP280::FILTER_OFF,      /* Filtering. */
                   Adafruit_BMP280::STANDBY_MS_1); /* Standby time. */
@@ -84,12 +84,12 @@ void setup() {
   bmp_temp->printSensorDetails();
 
   // Finish initialization; beep
-  for (int i = 0; i < 3; i++) {
-    digitalWrite(3, HIGH);
-    delay(300);
-    digitalWrite(3, LOW);
-    delay(300);
-  }
+  // for (int i = 0; i < 3; i++) {
+  //   digitalWrite(3, HIGH);
+  //   delay(300);
+  //   digitalWrite(3, LOW);
+  //   delay(300);
+  // }
 }
 
 void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
@@ -165,6 +165,10 @@ void kalman_filter_fusion(float baro_alt, float acc_z, unsigned long time_new, f
     float dt = (time_new - time_old) / 1e6;
     time_old = time_new;
 
+    // Ensure dt is within a reasonable range
+    if (dt < 1e-6) dt = 1e-6;
+    if (dt > 1.0) dt = 1.0;
+
     // State transition matrix
     float F[3][3] = {
         {1, dt, 0.5 * dt * dt},
@@ -179,15 +183,11 @@ void kalman_filter_fusion(float baro_alt, float acc_z, unsigned long time_new, f
     float H[3] = {1, 0, 0};
 
     // Process noise covariance matrix
-    // float acc_std = 0.1; // Acceleration noise standard deviation
     float Q[3][3] = {
         {G[0] * G[0] * acc_std * acc_std, G[0] * G[1] * acc_std * acc_std, G[0] * G[2] * acc_std * acc_std},
         {G[1] * G[0] * acc_std * acc_std, G[1] * G[1] * acc_std * acc_std, G[1] * G[2] * acc_std * acc_std},
         {G[2] * G[0] * acc_std * acc_std, G[2] * G[1] * acc_std * acc_std, G[2] * G[2] * acc_std * acc_std}
     };
-
-    // Measurement noise covariance
-    // float R = 0.01; // Measurement noise covariance
 
     // Prediction step
     float s_state_pred[3] = {
@@ -211,8 +211,23 @@ void kalman_filter_fusion(float baro_alt, float acc_z, unsigned long time_new, f
         }
     }
 
-    // Update step
-    float L = H[0] * P_pred[0][0] * H[0] + H[1] * P_pred[1][0] * H[0] + H[2] * P_pred[2][0] * H[0] + R;
+    // Normalize P_pred to prevent overflow
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            if (P_pred[i][j] > 1e10) {
+                P_pred[i][j] = 1e10;
+            }
+        }
+    }
+
+    // Calculate innovation covariance (L)
+    float L = 0;
+    for (int i = 0; i < 3; i++) {
+        L += H[i] * P_pred[i][0] * H[0];
+    }
+    L += R;
+
+    // Kalman gain
     float K[3] = {
         P_pred[0][0] * H[0] / L,
         P_pred[1][0] * H[0] / L,
@@ -245,6 +260,11 @@ void kalman_filter_fusion(float baro_alt, float acc_z, unsigned long time_new, f
             P_prev[i][j] = P[i][j];
         }
     }
+
+    // Debug output
+    // Serial.print("K: "); Serial.println(K[0]);
+    // Serial.print("State: "); Serial.print(s_state_prev[0]); Serial.print(", ");
+    // Serial.print(s_state_prev[1]); Serial.print(", "); Serial.println(s_state_prev[2]);
 }
 
 // Main loop
@@ -313,10 +333,12 @@ void loop() {
     kalman_filter_fusion(adjusted_altitude, acc_enu_z, t_now, s_state_out); // t_now in microseconds or 1e-6 seconds
     // Output the estimated altitude, vertical speed, and bias
     Serial.print(s_state_out[0]); // Estimated altitude in meters
+    Serial.print(',');
     Serial.print(s_state_out[1]); // Estimated vertical speed in m/s
+    Serial.print(',');
     Serial.println(s_state_out[2]); //Estimated accelerometer bias in m/s^2
   }
 
   // Add a delay or other logic as needed
-  //delay(10); // Delay is for the weak
+  delay(10); // Delay is for the weak
 }
