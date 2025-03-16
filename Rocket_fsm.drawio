@@ -1,0 +1,94 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.0.16 Chrome/132.0.6834.196 Electron/34.2.0 Safari/537.36" version="26.0.16">
+  <diagram name="Page-1" id="zjHgKJbdeffd96WjFTjJ">
+    <mxGraphModel dx="1218" dy="1786" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="TAUKc0z-lA3_6zsRZBN2-1" target="TAUKc0z-lA3_6zsRZBN2-13" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-19" value="Wifi input" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="TAUKc0z-lA3_6zsRZBN2-16" vertex="1" connectable="0">
+          <mxGeometry x="0.0639" y="3" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-1" value="Idle state&lt;div&gt;- Open/Close hatches&lt;/div&gt;&lt;div&gt;- Check status of sensors&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="210" y="20" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="TAUKc0z-lA3_6zsRZBN2-2" target="TAUKc0z-lA3_6zsRZBN2-5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-21" value="Launch event" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="TAUKc0z-lA3_6zsRZBN2-8" vertex="1" connectable="0">
+          <mxGeometry x="-0.0611" y="4" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="TAUKc0z-lA3_6zsRZBN2-2" target="TAUKc0z-lA3_6zsRZBN2-1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="190" y="219.99999999999977" as="sourcePoint" />
+            <mxPoint x="130" y="49.99999999999977" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="130" y="250" />
+              <mxPoint x="130" y="50" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-24" value="Wifi input" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="TAUKc0z-lA3_6zsRZBN2-23" vertex="1" connectable="0">
+          <mxGeometry x="0.0022" y="-2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-2" value="Armed state&lt;div&gt;- Detect launch event&lt;/div&gt;&lt;div&gt;- Use buzzer&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="210" y="220" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="TAUKc0z-lA3_6zsRZBN2-5" target="TAUKc0z-lA3_6zsRZBN2-6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-22" value="Recovery event" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="TAUKc0z-lA3_6zsRZBN2-9" vertex="1" connectable="0">
+          <mxGeometry x="-0.0244" y="3" relative="1" as="geometry">
+            <mxPoint x="2" y="-2" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-5" value="Launched state&lt;div&gt;- Actuate fins&lt;/div&gt;&lt;div&gt;- Record data&lt;/div&gt;&lt;div&gt;- Detect recovery condition&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="210" y="320" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="Vt_5AffX_R2UQ4qY72oQ-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="TAUKc0z-lA3_6zsRZBN2-6" target="TAUKc0z-lA3_6zsRZBN2-1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="50" y="485" />
+              <mxPoint x="50" y="50" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="Vt_5AffX_R2UQ4qY72oQ-2" value="Wifi input" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="Vt_5AffX_R2UQ4qY72oQ-1" vertex="1" connectable="0">
+          <mxGeometry x="-0.0115" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-6" value="Recovery state&lt;div&gt;- Deploy parachute&lt;/div&gt;&lt;div&gt;- Use fins to brake&lt;/div&gt;&lt;div&gt;- Save data&lt;/div&gt;&lt;div&gt;- Use buzzer&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="209" y="440" width="120" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-12" value="Launch event condition:&lt;div&gt;- In armed state&lt;/div&gt;&lt;div&gt;- acc_z &amp;gt; 3.0m/s2 for 10 data points&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+          <mxGeometry x="470" y="200" width="190" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="TAUKc0z-lA3_6zsRZBN2-13" target="TAUKc0z-lA3_6zsRZBN2-2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-20" value="Initialization done" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="TAUKc0z-lA3_6zsRZBN2-15" vertex="1" connectable="0">
+          <mxGeometry x="-0.1444" y="-1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-13" value="Initialization state&lt;div&gt;- Initialize baro data&lt;/div&gt;&lt;div&gt;- Initialize IMU angles&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="210" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-17" value="Data initialization:&lt;div&gt;- Record 100 baro data points and compute mean&lt;/div&gt;&lt;div&gt;(- Record 100 IMU quaternions and compute mean)&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+          <mxGeometry x="470" y="-20" width="190" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="TAUKc0z-lA3_6zsRZBN2-18" value="Recovery event condition:&lt;div&gt;- In launched state&lt;/div&gt;&lt;div&gt;- XY angles &amp;gt;&amp;nbsp; 45 degrees for 10 data points&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&amp;nbsp;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;- Filtered height now &amp;lt;= filtered height max - 2m&lt;/span&gt;&lt;/div&gt;" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+          <mxGeometry x="470" y="420" width="190" height="190" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

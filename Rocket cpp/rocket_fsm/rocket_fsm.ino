@@ -29,6 +29,18 @@ struct cartesian_t enu_acc;
 struct cartesian_t enu_vel;
 struct cartesian_t enu_pos;
 
+// Define important global parameters
+//----------------------------------------------------
+const int n_samples = 100; // Number of samples for initialization
+float alpha_baro = 0.15; // Smoothing factor for low pass filter
+float acc_z_threshold = 3; // Threshold for launch detection
+const int launch_n_samples = 10; // Number of samples for launch detection
+const int end_angle_n_samples = 5; // Number of samples for angles used to detect end of flight
+const float end_angle_threshold = 45; // Threshold in deg for recovery condition
+const float end_height_from_apogee = 2; // Distance in meters from the recorded height to detect descent
+const int end_height_n_samples = 10; // Number of samples for angles used to detect end of flight
+
+
 // Define Global State Machine Variables
 //----------------------------------------------------
 int state = 0;                   // state: 0=Idle, 1=Initial, 2=Armed, 3=Launch, 4=Recovery
@@ -37,6 +49,7 @@ int abort_cmd = 0;               // Abort command flag
 int reset_cmd = 0;               // Reset command flag
 int launch_detect = 0;           // Sensor flags
 int descent_detect = 0;
+int init_done = 0;
 
 // Wifi's AP mode credentials
 const char* ap_ssid = "sillygoose";
@@ -91,9 +104,10 @@ void setReports(long report_interval) {
 void IMU_init() {
   while (!bno08x.begin_I2C(0x4B)) {
     Serial.println("Failed to initialize BNO08x!");
-    delay(10); 
+    delay(100); 
   }
   setReports(reportIntervalUs);
+  delay(100);
 }
 
 void Baro_init() {
@@ -108,38 +122,48 @@ void Baro_init() {
                     Adafruit_BMP280::SAMPLING_X8,    /* Pressure oversampling */
                     Adafruit_BMP280::FILTER_OFF,      /* Filtering. */
                     Adafruit_BMP280::STANDBY_MS_1); /* Standby time. */
+    delay(100);
 }
 
 void Servo_init() {
     pwm.begin();
     pwm.setOscillatorFrequency(27000000);
     pwm.setPWMFreq(SERVO_FREQ);  // Set PWM frequency to 50 Hz
+    delay(100);
 }
 
 void Wifi_init() {
-  // Set up Access Point
-  WiFi.softAPConfig(IPAddress(192,168,1,1), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
-  WiFi.softAP(ap_ssid, ap_password);
-  
-  IPAddress myIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(myIP);
+    // Set up Access Point
+    WiFi.softAPConfig(IPAddress(192,168,1,1), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
+    WiFi.softAP(ap_ssid, ap_password);
+    
+    IPAddress myIP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(myIP);
 
-  // Server endpoints
-  server.on("/", handleRoot);
-  server.on("/openh", openHatch);
-  server.on("/closeh", closeHatch);
-  server.on("/arm", initialArm);
-  server.on("/reset", reset);
-  server.on("/abort", []() { abort_cmd = 1; server.sendHeader("Location", "/"); server.send(303); });
-  server.on("/refresh", refresh);
-  
-  server.begin();
-  Serial.println("HTTP server started");
+    // Server endpoints
+    server.on("/", handleRoot);
+    server.on("/openh", openHatch);
+    server.on("/closeh", closeHatch);
+    server.on("/arm", initialArm);
+    server.on("/reset", reset);
+    server.on("/abort", []() { abort_cmd = 1; server.sendHeader("Location", "/"); server.send(303); });
+    server.on("/refresh", refresh);
+    
+    server.begin();
+    Serial.println("HTTP server started");
+    delay(100);
 }
 
 // Define helper functions
 //----------------------------------------------------
+float lowPassFilter(float input, float alpha) {
+    static float prevOutput = 0.0;
+    float output = alpha * input + (1 - alpha) * prevOutput;
+    prevOutput = output;
+    return output;
+}
+
 float pressure_altitude(float pressure_hpa) {
     const float p0_hpa = 1013.25;
     float altitude = 44330.0 * (1.0 - pow(pressure_hpa / p0_hpa, 1.0 / 5.255)); // in meters
@@ -213,28 +237,27 @@ void realServoAngles(int servo_num, int angle) { // 0 to 90 is servo cw, 90 to 1
     pwm.setPWM(servo_num, 0, pulseLength); // Set PWM for servo
     }
   
-  void hatchServo(bool hatchOpen) {
-    int servo_num_hatch = 8;
-    if (hatchOpen) {
-      realServoAngles(servo_num_hatch, 50);
-    } else {
-      realServoAngles(servo_num_hatch, 110);
-    }
+void hatchServo(bool hatchOpen) {
+  int servo_num_hatch = 8;
+  if (hatchOpen) {
+    realServoAngles(servo_num_hatch, 50);
+  } else {
+    realServoAngles(servo_num_hatch, 110);
   }
+}
 
 void beep1() {
-    pinMode(3, OUTPUT);
-    digitalWrite(3, HIGH);
+    digitalWrite(buzzerPin, HIGH);
     delay(500);
-    digitalWrite(3, LOW);
+    digitalWrite(buzzerPin, LOW);
     delay(500);
 }
 
 void beep3() {
     for (int i = 0; i < 3; i++) {
-      digitalWrite(3, HIGH);
+      digitalWrite(buzzerPin, HIGH);
       delay(300);
-      digitalWrite(3, LOW);
+      digitalWrite(buzzerPin, LOW);
       delay(300);
     }
 }
@@ -305,20 +328,93 @@ void idle_state() { // Wait for command and open hatch
 
 }
 
-void initial_state() { // Initialize sensors
+void initial_state(float raw_altitude, float* alt_init, int* init_done) { // Initialize sensors
+    static int counter = 1; // Counter must not be 0 due to division
     
+    if (counter <= n_samples) {
+      *alt_init = *alt_init * (counter - 1) / counter + raw_altitude / counter;
+      counter = counter + 1;
+    }
+    else if (counter > n_samples) {
+        counter = 1; // Reset counter and move to next state
+        *init_done = 1;
+    }
 }
 
-void armed_state() { // Wait for launch detection
-
+void armed_state(float acc_enu_z, int *launch_detect) { // Wait for launch detection
+    launchDetect(acc_enu_z, launch_detect);
 }
 
-void launch_state() { // Ascend and apogee
-
+void launch_state(float baro_alt, float ang_x, float ang_y, int *descent_detect) { // Ascend and apogee
+    descentDetect(baro_alt, ang_x, ang_y, descent_detect);
 }
 
 void recovery_state() { // Descend and deploy parachute
+    long time = millis();
+    static long time_pre = 0;
 
+    hatchOpen = HIGH;
+    hatchServo(hatchOpen);
+
+    if ((time - time_pre) > 10000) {
+        beep3();
+        time_pre = time;
+    }
+}
+
+// Define functions for event conditions
+//----------------------------------------------------
+void launchDetect(float acc_enu_z, int *launch_detect) {
+    static float acc_buffer[launch_n_samples] = {0};
+    static int index = 0;
+    static int count = 0;
+    float sum = 0;
+
+    acc_buffer[index] = acc_enu_z;
+    index = (index + 1) % launch_n_samples;
+    if (count < launch_n_samples) count++;
+
+    for (int i = 0; i < count; i++) {
+        sum += acc_buffer[i];
+    }
+    float average_acc = sum / count;
+
+    if (average_acc > acc_z_threshold) {
+        *launch_detect = 1;
+    }
+}
+
+void descentDetect(float baro_alt, float ang_x, float ang_y, int *descent_detect) {
+    static float ang_x_buffer[end_angle_n_samples] = {0};
+    static float ang_y_buffer[end_angle_n_samples] = {0};
+    static int index = 0;
+    static int count = 0;
+    static float alt_apogee = 0;
+    int judge_x = 0, judge_y = 0;
+
+    if (baro_alt > alt_apogee) {
+        alt_apogee = baro_alt;
+    }
+
+    ang_x_buffer[index] = ang_x;
+    ang_y_buffer[index] = ang_y;
+    index = (index + 1) % end_angle_n_samples;
+    if (count < end_angle_n_samples) count++;
+
+    for (int i = 0; i < count; i++) {
+        if (ang_x_buffer[i] > end_angle_threshold) judge_x++;
+        if (ang_y_buffer[i] > end_angle_threshold) judge_y++;
+    }
+
+    if (judge_x == end_angle_n_samples || judge_y == end_angle_n_samples) {
+        *descent_detect = 1;
+    } 
+    else if (baro_alt + end_height_from_apogee < alt_apogee) { 
+        *descent_detect = 1; 
+    } 
+    else {
+        *descent_detect = 0;
+    }
 }
 
 // Setup function
@@ -328,14 +424,70 @@ void setup() {
     IMU_init();
     Baro_init();
     Servo_init();
-    Wifi_init()
-    sleep(100);
+    Wifi_init();
+    pinMode(buzzerPin, OUTPUT);
+    delay(100);
 }
 
 // Loop function
 //----------------------------------------------------
 void loop() {
+    // IMU data and procrssing
+    //----------------------------------------------------
+    if (bno08x.wasReset()) {
+      setReports(reportIntervalUs);
+    }
+    
+    if (bno08x.getSensorEvent(&sensorValue)) {
+      switch (sensorValue.sensorId) {
+        case SH2_ARVR_STABILIZED_RV:
+          quaternionToEulerRV(&sensorValue.un.arvrStabilizedRV, &ypr, true); // output in degrees
+          break;
+        case SH2_GYROSCOPE_CALIBRATED:
+          ypr_dot.roll = sensorValue.un.gyroscope.x * RAD_TO_DEG;
+          ypr_dot.pitch = sensorValue.un.gyroscope.y * RAD_TO_DEG;
+          ypr_dot.yaw = sensorValue.un.gyroscope.z * RAD_TO_DEG;
+          break;
+        case SH2_LINEAR_ACCELERATION:
+          body_acc.x = sensorValue.un.linearAcceleration.x;
+          body_acc.y = sensorValue.un.linearAcceleration.y;
+          body_acc.z = sensorValue.un.linearAcceleration.z;
+          break;
+      }}
+    delay(10); // 100 Hz
+
     server.handleClient();
+
+    static long t_last = 0; // t_pre
+
+    long t_now = micros();
+    float dt_us = t_now - t_last;
+    t_last = t_now;
+
+    // in rocket frame, with z up; rotation is ZYX
+    float x_pitch = ypr.roll; // x is still x, just a differrent name
+    float y_roll = ypr.pitch; // y is still y, just a differrent name
+    float z_yaw = ypr.yaw;
+    float z_yaw_dot = ypr_dot.yaw;
+
+    acc_ZYX_body_to_inertial(x_pitch / RAD_TO_DEG, y_roll / RAD_TO_DEG, z_yaw / RAD_TO_DEG, &body_acc, &enu_acc); // ANGLE INPUTS IN RAD!!!
+    float acc_enu_x = enu_acc.x;
+    float acc_enu_y = enu_acc.y;
+    float acc_enu_z = enu_acc.z;
+
+    // Baro data and processing
+    //----------------------------------------------------
+    sensors_event_t temp_event, pressure_event;
+    bmp_pressure->getEvent(&pressure_event);
+
+    float pressure = pressure_event.pressure;
+    float raw_altitude = pressure_altitude(pressure); // Get pressure altitude
+    static float alt_init = 0; // Let's intialize the initial altitude to zero
+    float adjusted_altitude = raw_altitude - alt_init;
+    float filtered_altitude = lowPassFilter(adjusted_altitude, alpha_baro);
+
+    Serial.print(adjusted_altitude);          Serial.print(",");
+    Serial.println(acc_enu_z);
     
     switch(state) {
       case 0: // Idle
@@ -352,18 +504,21 @@ void loop() {
         
       case 1: // Initialization
         strcpy(state_disp, "Initialization"); // Update state display
-        initial_state();
-        state = 2;  // Move to armed after initialization
-        beep3();
+        initial_state(raw_altitude, &alt_init, &init_done); // Pass address of alt_init
+        if (init_done == 1) { // Fixed comparison operator
+          state = 2;  // Move to armed after initialization
+          init_done = 0;
+          beep3();
+        }
         break;
-        
+              
       case 2: // Armed
         strcpy(state_disp, "Armed"); // Update state display
-        armed_state();
-        if(launch_detect) {
+        armed_state(acc_enu_z, &launch_detect);
+        if(launch_detect) { // Launch detection
           state = 3;
           launch_detect = 0;
-        } else if(abort_cmd) {
+        } else if(abort_cmd) { // Abort command
           state = 0;
           abort_cmd = 0;
           beep1();
@@ -372,7 +527,7 @@ void loop() {
         
       case 3: // Launch
         strcpy(state_disp, "Launched"); // Update state display
-        launch_state();
+        launch_state(filtered_altitude, x_pitch, y_roll, &descent_detect);
         if(descent_detect) {
           state = 4;
           descent_detect = 0;

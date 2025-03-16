@@ -253,9 +253,6 @@ void loop() {
     }}
 
     static long t_last = 0; // t_pre
-    static float x_pitch_pre = 0;
-    static float y_roll_pre = 0;
-    static float z_yaw_pre = 0;
 
     long t_now = micros();
     float dt_us = t_now - t_last;
