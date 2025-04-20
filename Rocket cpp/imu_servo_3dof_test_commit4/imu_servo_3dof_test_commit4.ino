@@ -35,6 +35,11 @@ struct cartesian_t {
   float z;
 };
 
+struct pid_error_t {
+  float error_pre;
+  float error_sum;
+};
+
 struct euler_t ypr;
 struct euler_t ypr_dot;
 
@@ -42,6 +47,12 @@ struct cartesian_t body_acc;
 struct cartesian_t enu_acc;
 struct cartesian_t enu_vel;
 struct cartesian_t enu_pos;
+
+struct pid_error_t x_pitch_rate_pid = {0, 0};
+struct pid_error_t y_roll_rate_pid = {0, 0};
+struct pid_error_t z_yaw_pid = {0, 0};
+struct pid_error_t x_pitch_pid = {0, 0};
+struct pid_error_t y_roll_pid = {0, 0};
 
 Adafruit_BNO08x  bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
@@ -184,23 +195,20 @@ void setIdealAngles(int angles[]) {
   realServoAngles(3, servo4);  
   }
 
-float pidControl(float target, float measure, float dt, float kp, float ki, float kd, bool anti_wind, bool saturation) { // dt in micro second
-  static float error_pre = 0;
-  static float error_sum = 0;
+float pidControl(pid_error_t* error_save, float target, float measure, float dt, float kp, float ki, float kd, bool anti_wind, bool saturation) { // dt in micro second
+  float error_pre = error_save->error_pre;
+  float error_sum = error_save->error_sum;
   float error = target - measure;
   float error_dot = (error - error_pre) / (dt * 1e-6);
   
-  error_pre = error;
+  error_save->error_pre = error;
 
   // Anti-windup
-  if (saturation && anti_wind) {
-      error_sum = error_sum; // Clamp
-  }
-  else {
-    error_sum = error_sum + error * (dt * 1e-6); // No saturation
+  if (!(saturation && anti_wind)) {
+    error_save->error_sum = error_sum + error * (dt * 1e-6); // No saturation
   }
 
-  float output = kp * error + ki * error_sum + kd * error_dot;
+  float output = kp * error + ki * error_save->error_sum + kd * error_dot;
   return output;
 }
 
@@ -228,15 +236,15 @@ void order2integrator(cartesian_t* acc, float dt_us, cartesian_t* pos_out, carte
     static cartesian_t pos_old = {0, 0, 0};
     
     cartesian_t vel = {
-        vel_old.x + (acc_old.x + acc->x) / 2 * dt_us * 1e-6,
-        vel_old.y + (acc_old.y + acc->y) / 2 * dt_us * 1e-6,
-        vel_old.z + (acc_old.z + acc->z) / 2 * dt_us * 1e-6
+        vel_old.x + (acc_old.x + acc->x) / 2 * dt_us * 1e-6f,
+        vel_old.y + (acc_old.y + acc->y) / 2 * dt_us * 1e-6f,
+        vel_old.z + (acc_old.z + acc->z) / 2 * dt_us * 1e-6f
     };
     
     cartesian_t pos = {
-        pos_old.x + (vel_old.x + vel.x) / 2 * dt_us * 1e-6,
-        pos_old.y + (vel_old.y + vel.y) / 2 * dt_us * 1e-6,
-        pos_old.z + (vel_old.z + vel.z) / 2 * dt_us * 1e-6
+        pos_old.x + (vel_old.x + vel.x) / 2 * dt_us * 1e-6f,
+        pos_old.y + (vel_old.y + vel.y) / 2 * dt_us * 1e-6f,
+        pos_old.z + (vel_old.z + vel.z) / 2 * dt_us * 1e-6f
     };
     
     acc_old = *acc;
@@ -245,6 +253,27 @@ void order2integrator(cartesian_t* acc, float dt_us, cartesian_t* pos_out, carte
     
     *pos_out = pos;
     *vel_out = vel;
+}
+
+// float actuationFactor(float relative_height, float vertical_speed) {
+//     if (relative_height < 8) { // 7m is the height of the launch rail
+//         return 0; // fins should not move when the rocket is on the launch rail
+//     }
+//     else if (vertical_speed > 10) {
+//         return (30 / vertical_speed) ** 2; // PID tuned at 30 m/s
+//     }
+//     else {
+//         return 9 // max k_act is 3^2
+//     }
+// }
+
+float actuationFactor(float vertical_speed) {
+    if (vertical_speed > 10) {
+        return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
+    }
+    else {
+        return 9; // max k_act is 3^2
+    }
 }
 
 void loop() {
@@ -290,46 +319,28 @@ void loop() {
 
     //order2integrator(&enu_acc, dt_us, &enu_pos, &enu_vel);
 
-    if (Serial){
-    Serial.print(t_now);           Serial.print(",");
-    Serial.print(x_pitch);          Serial.print(",");
-    Serial.print(y_roll);          Serial.print(",");
-    Serial.print(z_yaw);          Serial.print(",");
+    // if (Serial){
+    // Serial.print(t_now);           Serial.print(",");
+    // Serial.print(x_pitch);          Serial.print(",");
+    // Serial.print(y_roll);          Serial.print(",");
+    // Serial.print(z_yaw);          Serial.print(",");
 
-    Serial.print(enu_acc.x);          Serial.print(",");
-    Serial.print(enu_acc.y);          Serial.print(",");
-    Serial.println(enu_acc.z);
-    }
+    // Serial.print(enu_acc.x);          Serial.print(",");
+    // Serial.print(enu_acc.y);          Serial.print(",");
+    // Serial.println(enu_acc.z);
+    // }
+
+    // Actuation factor
+    float vertical_speed = 30; // FILLER!!!
+    float actuation_factor = actuationFactor(vertical_speed);
 
     // Initialize saturation flags
     static bool x_pitch_saturation = false;
     static bool y_roll_saturation = false;
-
-    // PID control
-    float output_z_yaw = pidControl(0, z_yaw_dot, dt_us, 0.05, 0., 0., False, False);
-
-    float output_y_roll_rate = pidControl(0, y_roll, dt_us, 10., 4., 0., True, y_roll_saturation);
-    float output_y_roll = pidControl(output_y_roll_rate, 0, dt_us, 0.2, 0., 0., False, False);
-
-    float output_x_pitch_rate = pidControl(0, x_pitch, dt_us, 10., 4., 0., True, x_pitch_saturation);
-    float output_x_pitch = pidControl(output_x_pitch_rate, 0, dt_us, 0.2, 0., 0., False, False);
-
-    float fin1_ang = (output_z_yaw + 0. + output_x_pitch);
-    float fin2_ang = (output_z_yaw + output_y_roll + 0.);
-    float fin3_ang = (output_z_yaw + 0. - output_x_pitch);
-    float fin4_ang = (output_z_yaw - output_y_roll + 0.);
-
-    // raw actuator commands
-    int servo1_ang = (int)(- fin1_ang / servo_ang_to_fin_ang);
-    int servo2_ang = (int)(- fin2_ang / servo_ang_to_fin_ang);
-    int servo3_ang = (int)(- fin3_ang / servo_ang_to_fin_ang);
-    int servo4_ang = (int)(- fin4_ang / servo_ang_to_fin_ang);
-
-    // real actuator commands
-    int servo1_ang_out = outputSaturation(servo1_ang, servo_angle_max);
-    int servo2_ang_out = outputSaturation(servo2_ang, servo_angle_max);
-    int servo3_ang_out = outputSaturation(servo3_ang, servo_angle_max);
-    int servo4_ang_out = outputSaturation(servo4_ang, servo_angle_max);
+    static int servo1_ang = 0;
+    static int servo2_ang = 0;
+    static int servo3_ang = 0;
+    static int servo4_ang = 0;
 
     // saturation detection
     bool servo1_saturation = saturationDetection(servo1_ang, servo_angle_max);
@@ -338,16 +349,59 @@ void loop() {
     bool servo4_saturation = saturationDetection(servo4_ang, servo_angle_max);
     if (servo1_saturation || servo3_saturation) {
         x_pitch_saturation = true;
+        Serial.println("Saturation 13");
     }
     else {
         x_pitch_saturation = false;
     }
     if (servo2_saturation || servo4_saturation) {
         y_roll_saturation = true;
+        Serial.println("Saturation 24");
     }
     else {
         y_roll_saturation = false;
     }
+
+    // PID control
+    float output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.05, 0., 0., false, false);
+
+    //float output_y_roll_rate = pidControl(0, y_roll, dt_us, 10., 4., 0., true, y_roll_saturation);
+    float output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 5., 0.5, 0., true, y_roll_saturation);
+    float output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, 0, dt_us, 0.1, 0., 0., false, false);
+
+    //float output_x_pitch_rate = pidControl(0, x_pitch, dt_us, 10., 4., 0., true, x_pitch_saturation);
+    float output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 5., 0.5, 0., true, x_pitch_saturation);
+    float output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, 0, dt_us, 0.1, 0., 0., false, false);
+
+    float fin1_ang = (output_z_yaw + 0. + output_x_pitch);
+    float fin2_ang = (output_z_yaw + output_y_roll + 0.);
+    float fin3_ang = (output_z_yaw + 0. - output_x_pitch);
+    float fin4_ang = (output_z_yaw - output_y_roll + 0.);
+
+    if (Serial){
+    Serial.print(fin1_ang);           Serial.print(",");
+    Serial.print(fin2_ang);          Serial.print(",");
+    Serial.print(fin3_ang);          Serial.print(",");
+    Serial.println(fin4_ang);
+    }
+
+    // Scaling factors to account for variable speed
+    fin1_ang = fin1_ang * actuation_factor;
+    fin2_ang = fin2_ang * actuation_factor;
+    fin3_ang = fin3_ang * actuation_factor;
+    fin4_ang = fin4_ang * actuation_factor;
+
+    // raw actuator commands
+    servo1_ang = (int)(- fin1_ang / servo_ang_to_fin_ang);
+    servo2_ang = (int)(- fin2_ang / servo_ang_to_fin_ang);
+    servo3_ang = (int)(- fin3_ang / servo_ang_to_fin_ang);
+    servo4_ang = (int)(- fin4_ang / servo_ang_to_fin_ang);
+
+    // real actuator commands
+    int servo1_ang_out = outputSaturation(servo1_ang, servo_angle_max);
+    int servo2_ang_out = outputSaturation(servo2_ang, servo_angle_max);
+    int servo3_ang_out = outputSaturation(servo3_ang, servo_angle_max);
+    int servo4_ang_out = outputSaturation(servo4_ang, servo_angle_max);
 
     // dfine desired angles for the 4 servos
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
