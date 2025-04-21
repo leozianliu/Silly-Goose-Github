@@ -8,8 +8,8 @@
 MS5611 MS5611(0x77);
 
 const int n_samples = 100;
-float R = 0.01; // Measurement noise covariance
-float acc_std = 0.5; // Acceleration noise standard deviation
+float R = 0.001; // Measurement noise covariance
+float acc_std = 1; // Acceleration noise standard deviation
 
 struct euler_t {
   float yaw;
@@ -56,7 +56,7 @@ void setup() {
   // Try to initialize IMU
   while (!bno08x.begin_I2C(0x4B)) {
     Serial.println("Failed to initialize BNO08x!");
-    delay(10); 
+    delay(100); 
   }
 
   setReports(reportIntervalUs);
@@ -152,130 +152,175 @@ float pressure_altitude(float pressure_hpa) {
 // Kalman filter with bias estimation
 //-------------------------------------------------------------------------
 void kalman_filter_fusion(float baro_alt, float acc_z, unsigned long time_new, float s_state_out[3]) {
-  // Tuning parameters - these need to be set appropriately!
-  const float acc_std = 0.1f; // Process noise standard deviation
-  const float R = 1.0f;      // Measurement noise variance
+    // Tuning parameters
+    const float acc_std = 0.1f;      // Accelerometer noise standard deviation (m/s²)
+    const float bias_std = 0.01f;    // Bias random walk standard deviation (m/s³)
+    const float R = 1.0f;            // Measurement noise variance (m²)
+    const float gravity = 9.80665f;  // Standard gravity (m/s²)
 
-  static float s_state_prev[3] = {0, 0, 0}; // [altitude, vertical speed, accelerometer bias]
-  static float P_prev[3][3] = {{0.5, 0, 0}, {0, 0.1, 0}, {0, 0, 0.1}};
-  static unsigned long time_old = 0;
+    static bool initialized = false;
+    static float s_state_prev[3] = {0};       // [altitude, vertical velocity, accelerometer bias]
+    static float P_prev[3][3] = {{0}};        // Covariance matrix
+    static unsigned long time_old = 0;
 
-  // Time step (convert to seconds)
-  float dt = (time_new - time_old) / 1e6f;
-  time_old = time_new;
+    // ===== Initialization =====
+    if (!initialized) {
+        s_state_prev[0] = baro_alt;           // Initialize altitude with first measurement
+        s_state_prev[1] = 0;                  // Initial vertical velocity (unknown, assume 0)
+        s_state_prev[2] = 0;                  // Initial accelerometer bias (unknown, assume 0)
+        
+        // Initial covariance - high uncertainty in velocity and bias
+        P_prev[0][0] = 1.0f;                 // Altitude variance
+        P_prev[1][1] = 10.0f;                // Velocity variance
+        P_prev[2][2] = 1.0f;                 // Bias variance
+        
+        time_old = time_new;
+        initialized = true;
+        return;  // Skip first update to initialize properly
+    }
 
-  // State transition matrix
-  float F[3][3] = {
-      {1, dt, 0.5f * dt * dt},
-      {0, 1, dt},
-      {0, 0, 1}
-  };
+    // ===== Time Step Handling =====
+    if (time_new <= time_old) {
+        return;  // Skip invalid time steps
+    }
+    
+    float dt = (time_new - time_old) / 1e6f;  // Convert microseconds to seconds
+    time_old = time_new;
+    
+    // Limit maximum dt for stability
+    if (dt > 0.1f) dt = 0.1f;
 
-  // Control input matrix
-  float G[3] = {0.5f * dt * dt, dt, 0};
+    // ===== Prediction Step =====
+    // Adjust accelerometer reading (subtract gravity and estimated bias)
+    float acc = acc_z - gravity - s_state_prev[2];
 
-  // Measurement matrix (we only measure altitude)
-  float H[3] = {1, 0, 0};
+    // State transition matrix
+    float F[3][3] = {
+        {1, dt, -0.5f * dt * dt},  // Position update (bias affects negatively)
+        {0, 1, -dt},               // Velocity update
+        {0, 0, 1}                  // Bias is assumed constant
+    };
 
-  // Process noise covariance matrix
-  float Q[3][3] = {
-      {G[0] * G[0] * acc_std * acc_std, G[0] * G[1] * acc_std * acc_std, G[0] * G[2] * acc_std * acc_std},
-      {G[1] * G[0] * acc_std * acc_std, G[1] * G[1] * acc_std * acc_std, G[1] * G[2] * acc_std * acc_std},
-      {G[2] * G[0] * acc_std * acc_std, G[2] * G[1] * acc_std * acc_std, G[2] * G[2] * acc_std * acc_std}
-  };
+    // Control input matrix (how acceleration affects state)
+    float G[3] = {0.5f * dt * dt, dt, 0};
 
-  // ===== Prediction Step =====
-  // Predict state
-  float s_state_pred[3] = {
-      F[0][0] * s_state_prev[0] + F[0][1] * s_state_prev[1] + F[0][2] * s_state_prev[2] + G[0] * acc_z,
-      F[1][0] * s_state_prev[0] + F[1][1] * s_state_prev[1] + F[1][2] * s_state_prev[2] + G[1] * acc_z,
-      F[2][0] * s_state_prev[0] + F[2][1] * s_state_prev[1] + F[2][2] * s_state_prev[2] + G[2] * acc_z
-  };
+    // Process noise covariance
+    float Q[3][3] = {
+        {G[0]*G[0]*acc_std*acc_std + 1e-5f, G[0]*G[1]*acc_std*acc_std, 0},
+        {G[1]*G[0]*acc_std*acc_std, G[1]*G[1]*acc_std*acc_std + 1e-5f, 0},
+        {0, 0, bias_std*bias_std*dt + 1e-6f}
+    };
 
-  // Predict covariance: F * P * F' + Q
-  float F_T[3][3]; // Transpose of F
-  for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-          F_T[i][j] = F[j][i];
-      }
-  }
+    // Predict state: x_pred = F*x_prev + G*u
+    float s_state_pred[3] = {
+        F[0][0]*s_state_prev[0] + F[0][1]*s_state_prev[1] + F[0][2]*s_state_prev[2] + G[0]*acc,
+        F[1][0]*s_state_prev[0] + F[1][1]*s_state_prev[1] + F[1][2]*s_state_prev[2] + G[1]*acc,
+        F[2][0]*s_state_prev[0] + F[2][1]*s_state_prev[1] + F[2][2]*s_state_prev[2] + G[2]*acc
+    };
 
-  float temp[3][3];
-  for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-          temp[i][j] = 0;
-          for (int k = 0; k < 3; k++) {
-              temp[i][j] += F[i][k] * P_prev[k][j];
-          }
-      }
-  }
+    // Predict covariance: P_pred = F*P_prev*F' + Q
+    float F_T[3][3], temp[3][3], P_pred[3][3];
+    
+    // Compute F transpose
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            F_T[i][j] = F[j][i];
+        }
+    }
+    
+    // temp = F*P_prev
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            temp[i][j] = 0;
+            for (int k = 0; k < 3; k++) {
+                temp[i][j] += F[i][k] * P_prev[k][j];
+            }
+        }
+    }
+    
+    // P_pred = temp*F_T + Q
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            P_pred[i][j] = 0;
+            for (int k = 0; k < 3; k++) {
+                P_pred[i][j] += temp[i][k] * F_T[k][j];
+            }
+            P_pred[i][j] += Q[i][j];
+        }
+    }
 
-  float P_pred[3][3];
-  for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-          P_pred[i][j] = 0;
-          for (int k = 0; k < 3; k++) {
-              P_pred[i][j] += temp[i][k] * F_T[k][j];
-          }
-          P_pred[i][j] += Q[i][j];
-      }
-  }
+    // ===== Update Step =====
+    // Measurement matrix (we only measure altitude directly)
+    float H[3] = {1, 0, 0};
 
-  // ===== Update Step =====
-  // Innovation covariance
-  float S = 0;
-  for (int i = 0; i < 3; i++) {
-      S += H[i] * P_pred[0][i]; // H is [1,0,0], so this simplifies to P_pred[0][0]
-  }
-  S += R;
+    // Innovation covariance: S = H*P_pred*H' + R
+    float S = 0;
+    for (int i = 0; i < 3; i++) {
+        S += H[i] * P_pred[0][i];  // Since H is [1,0,0], this simplifies to P_pred[0][0]
+    }
+    S += R;
 
-  // Kalman gain
-  float K[3];
-  for (int i = 0; i < 3; i++) {
-      K[i] = 0;
-      for (int j = 0; j < 3; j++) {
-          K[i] += P_pred[i][j] * H[j];
-      }
-      K[i] /= S;
-  }
+    // Kalman gain: K = P_pred*H'/S
+    float K[3];
+    for (int i = 0; i < 3; i++) {
+        K[i] = 0;
+        for (int j = 0; j < 3; j++) {
+            K[i] += P_pred[i][j] * H[j];
+        }
+        K[i] /= S;
+    }
 
-  // Innovation
-  float innov = baro_alt - s_state_pred[0]; // Since H is [1,0,0]
+    // Innovation: y = z - H*x_pred
+    float innov = baro_alt - s_state_pred[0];
 
-  // State update
-  float s_state[3] = {
-      s_state_pred[0] + K[0] * innov,
-      s_state_pred[1] + K[1] * innov,
-      s_state_pred[2] + K[2] * innov
-  };
+    // State update: x = x_pred + K*innov
+    float s_state[3] = {
+        s_state_pred[0] + K[0] * innov,
+        s_state_pred[1] + K[1] * innov,
+        s_state_pred[2] + K[2] * innov
+    };
 
-  // Covariance update: P = (I - K*H) * P_pred
-  float KH[3][3];
-  for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-          KH[i][j] = K[i] * H[j];
-      }
-  }
+    // Covariance update: P = (I - K*H)*P_pred
+    float KH[3][3], I[3][3] = {{1,0,0},{0,1,0},{0,0,1}}, P[3][3];
+    
+    // Compute KH = K*H
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            KH[i][j] = K[i] * H[j];
+        }
+    }
+    
+    // Compute P = (I - KH)*P_pred
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            P[i][j] = 0;
+            for (int k = 0; k < 3; k++) {
+                P[i][j] += (I[i][k] - KH[i][k]) * P_pred[k][j];
+            }
+        }
+    }
 
-  float I[3][3] = {{1,0,0},{0,1,0},{0,0,1}};
-  float P[3][3];
-  for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-          P[i][j] = 0;
-          for (int k = 0; k < 3; k++) {
-              P[i][j] += (I[i][k] - KH[i][k]) * P_pred[k][j];
-          }
-      }
-  }
+    // ===== Post-Update Checks =====
+    // Ensure covariance matrix remains positive definite
+    for (int i = 0; i < 3; i++) {
+        if (P[i][i] < 0) P[i][i] = 0;
+    }
+    
+    // Symmetrize covariance matrix
+    for (int i = 0; i < 3; i++) {
+        for (int j = i+1; j < 3; j++) {
+            P[i][j] = P[j][i] = 0.5f * (P[i][j] + P[j][i]);
+        }
+    }
 
-  // Update persistent variables
-  for (int i = 0; i < 3; i++) {
-      s_state_prev[i] = s_state[i];
-      s_state_out[i] = s_state[i];
-      for (int j = 0; j < 3; j++) {
-          P_prev[i][j] = P[i][j];
-      }
-  }
+    // ===== Update Persistent Variables =====
+    for (int i = 0; i < 3; i++) {
+        s_state_prev[i] = s_state[i];
+        s_state_out[i] = s_state[i];
+        for (int j = 0; j < 3; j++) {
+            P_prev[i][j] = P[i][j];
+        }
+    }
 }
 
 // Main loop
@@ -356,3 +401,4 @@ void loop() {
   // Add a delay or other logic as needed
   delay(10); // Delay is for the weak
 }
+
