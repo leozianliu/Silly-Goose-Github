@@ -3,8 +3,11 @@
 #include <math.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
+#include <MS5611.h>
+
 
 #define BNO08X_RESET -1
+MS5611 MS5611(0x77);
 
 // Initialize the PWM driver using the default address
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -22,6 +25,15 @@ const int servo4_iang = 90;
 
 const int servo_angle_max = 70;
 const float servo_ang_to_fin_ang = 0.356;
+
+// Samples for altitude initialization
+const int n_samples = 100;
+// Kalman parameters
+float R = 0.01; // Measurement noise covariance
+float acc_std = 0.1; // Acceleration noise standard deviation
+
+// This might need to be relocated in the final FSM code
+float alt_init = 0; // Define initial altitude variable
 
 struct euler_t {
   float yaw;
@@ -66,41 +78,6 @@ void setReports(long report_interval) {
   bno08x.enableReport(SH2_GYROSCOPE_CALIBRATED, reportIntervalUs);
   bno08x.enableReport(SH2_LINEAR_ACCELERATION, reportIntervalUs);
 }
-
-void setup() {
-  pinMode(LED_BUILTIN, OUTPUT); // Internal LED
-  pinMode(3, OUTPUT); // Buzzer connected to GP3 (5)
-
-
-  Serial.begin(115200);
-
-  // Try to initialize IMU
-  while (!bno08x.begin_I2C(0x4B)) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(100); 
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(100); 
-  }
-
-  setReports(reportIntervalUs);
-
-  delay(100);
-
-  // Servo control
-  pwm.begin();
-  pwm.setOscillatorFrequency(27000000);
-  pwm.setPWMFreq(SERVO_FREQ);  // Set PWM frequency to 50 Hz
-
-  delay(100);
-
-  // Finish initialization; beep
-  for (int i=0; i<3; i++) {
-  digitalWrite(3, HIGH);
-  delay(300);
-  digitalWrite(3,LOW);
-  delay(300);}
-}
-
 
 void quaternionToEuler(float qr, float qi, float qj, float qk, euler_t* ypr, bool degrees = false) {
 
@@ -230,50 +207,266 @@ bool saturationDetection(int demand, int limit) {
   }
 }
 
-void order2integrator(cartesian_t* acc, float dt_us, cartesian_t* pos_out, cartesian_t* vel_out) {
-    static cartesian_t acc_old = {0, 0, 0};
-    static cartesian_t vel_old = {0, 0, 0};
-    static cartesian_t pos_old = {0, 0, 0};
-    
-    cartesian_t vel = {
-        vel_old.x + (acc_old.x + acc->x) / 2 * dt_us * 1e-6f,
-        vel_old.y + (acc_old.y + acc->y) / 2 * dt_us * 1e-6f,
-        vel_old.z + (acc_old.z + acc->z) / 2 * dt_us * 1e-6f
-    };
-    
-    cartesian_t pos = {
-        pos_old.x + (vel_old.x + vel.x) / 2 * dt_us * 1e-6f,
-        pos_old.y + (vel_old.y + vel.y) / 2 * dt_us * 1e-6f,
-        pos_old.z + (vel_old.z + vel.z) / 2 * dt_us * 1e-6f
-    };
-    
-    acc_old = *acc;
-    vel_old = vel;
-    pos_old = pos;
-    
-    *pos_out = pos;
-    *vel_out = vel;
+float actuationFactor(float relative_height, float vertical_speed) {
+  const int min_control_speed = 10; // Minimum vertical speed for control
+  const float height_rail = 8; // Height of the launch rail in meters
+
+  if (relative_height < height_rail) { // 7m is the height of the launch rail
+      return 0.; // fins should not move when the rocket is on the launch rail
+  }
+  else if (vertical_speed > min_control_speed) {
+      return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
+  }
+  else {
+      return 9.; // max k_act is 3^2, since min speed is 10 m/s
+  }
 }
 
-// float actuationFactor(float relative_height, float vertical_speed) {
-//     if (relative_height < 8) { // 7m is the height of the launch rail
-//         return 0; // fins should not move when the rocket is on the launch rail
-//     }
-//     else if (vertical_speed > 10) {
-//         return (30 / vertical_speed) ** 2; // PID tuned at 30 m/s
+// float actuationFactor(float vertical_speed) {
+//     if (vertical_speed > 10) {
+//         return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
 //     }
 //     else {
-//         return 9 // max k_act is 3^2
+//         return 9; // max k_act is 3^2
 //     }
 // }
 
-float actuationFactor(float vertical_speed) {
-    if (vertical_speed > 10) {
-        return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
+float pressure_altitude(float pressure_hpa) {
+  const float p0_hpa = 1013.25;
+  float altitude = 44330.0 * (1.0 - pow(pressure_hpa / p0_hpa, 1.0 / 5.255)); // in meters
+  return altitude;
+}
+
+void initial_altitude(float* alt_init){
+  static int counter = 1; // Counter must not be 0 due to division
+  bool run_initial_altitude = true;
+
+  while (run_initial_altitude == true) {
+    // Get pressure altitude
+    int result = MS5611.read();
+    float pressure = MS5611.getPressure();
+    float raw_altitude = pressure_altitude(pressure);
+        
+    if (counter <= n_samples) {
+      *alt_init = *alt_init * (counter - 1) / counter + raw_altitude / counter;
+      counter = counter + 1;
     }
-    else {
-        return 9; // max k_act is 3^2
+    else if (counter > n_samples) {
+        counter = 1; // Reset counter and done
+        run_initial_altitude = false;
     }
+  }
+}
+
+// Kalman filter
+//-------------------------------------------------------------------------
+void kalman_filter(float baro_alt, unsigned long time_new, float s_state_out[3]) {
+  // Tuning parameters
+
+  static bool initialized = false;
+  static float s_state_prev[3] = {0};       // [altitude, vertical velocity, acceleration]
+  static float P_prev[3][3] = {{0}};        // Covariance matrix
+  static unsigned long time_old = 0;
+
+  // ===== Initialization =====
+  if (!initialized) {
+      s_state_prev[0] = baro_alt;           // Initialize altitude with first measurement
+      s_state_prev[1] = 0;                  // Initial vertical velocity (unknown, assume 0)
+      s_state_prev[2] = 0;                  // Initial acceleration (unknown, assume 0)
+      
+      // Initial covariance - high uncertainty in velocity and bias
+      P_prev[0][0] = 1.0f;                 // Altitude variance
+      P_prev[1][1] = 1.0f;                // Velocity variance
+      P_prev[2][2] = 1.0f;                 // Avveration variance
+      
+      time_old = time_new;
+      initialized = true;
+      return;  // Skip first update to initialize properly
+  }
+
+  // ===== Time Step Handling =====
+  if (time_new <= time_old) {
+      return;  // Skip invalid time steps
+  }
+  
+  float dt = (time_new - time_old) / 1e6f;  // Convert microseconds to seconds
+  time_old = time_new;
+  
+  // Limit maximum dt for stability
+  if (dt > 0.1f) dt = 0.1f;
+
+  // ===== Prediction Step =====
+  // State transition matrix
+  float F[3][3] = {
+      {1, dt, 0.5f * dt * dt},  // Position update
+      {0, 1, dt},               // Velocity update
+      {0, 0, 1}                  // Acceleration is assumed constant
+  };
+
+  // Control input matrix (how acceleration affects state)
+  float G[3] = {0.5f * dt * dt, dt, 1};
+
+  // Process noise covariance
+  float Q[3][3] = {
+      {G[0]*G[0]*acc_std*acc_std, G[0]*G[1]*acc_std*acc_std, G[0]*G[2]*acc_std*acc_std},
+      {G[1]*G[0]*acc_std*acc_std, G[1]*G[1]*acc_std*acc_std, G[1]*G[2]*acc_std*acc_std},
+      {G[2]*G[0]*acc_std*acc_std, G[2]*G[1]*acc_std*acc_std, G[2]*G[2]*acc_std*acc_std}
+  };
+
+  // Predict state: x_pred = F*x_prev + G*u
+  float s_state_pred[3] = {
+      F[0][0]*s_state_prev[0] + F[0][1]*s_state_prev[1] + F[0][2]*s_state_prev[2],
+      F[1][0]*s_state_prev[0] + F[1][1]*s_state_prev[1] + F[1][2]*s_state_prev[2],
+      F[2][0]*s_state_prev[0] + F[2][1]*s_state_prev[1] + F[2][2]*s_state_prev[2]
+  };
+
+  // Predict covariance: P_pred = F*P_prev*F' + Q
+  float F_T[3][3], temp[3][3], P_pred[3][3];
+  
+  // Compute F transpose
+  for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+          F_T[i][j] = F[j][i];
+      }
+  }
+  
+  // temp = F*P_prev
+  for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+          temp[i][j] = 0;
+          for (int k = 0; k < 3; k++) {
+              temp[i][j] += F[i][k] * P_prev[k][j];
+          }
+      }
+  }
+  
+  // P_pred = temp*F_T + Q
+  for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+          P_pred[i][j] = 0;
+          for (int k = 0; k < 3; k++) {
+              P_pred[i][j] += temp[i][k] * F_T[k][j];
+          }
+          P_pred[i][j] += Q[i][j];
+      }
+  }
+
+  // ===== Update Step =====
+  // Measurement matrix (we only measure altitude directly)
+  float H[3] = {1, 0, 0};
+
+  // Innovation covariance: S = H*P_pred*H' + R
+  float S = 0;
+  for (int i = 0; i < 3; i++) {
+      S += H[i] * P_pred[0][i];  // Since H is [1,0,0], this simplifies to P_pred[0][0]
+  }
+  S += R;
+
+  // Kalman gain: K = P_pred*H'/S
+  float K[3];
+  for (int i = 0; i < 3; i++) {
+      K[i] = 0;
+      for (int j = 0; j < 3; j++) {
+          K[i] += P_pred[i][j] * H[j];
+      }
+      K[i] /= S;
+  }
+
+  // Innovation: y = z - H*x_pred
+  float innov = baro_alt - s_state_pred[0];
+
+  // State update: x = x_pred + K*innov
+  float s_state[3] = {
+      s_state_pred[0] + K[0] * innov,
+      s_state_pred[1] + K[1] * innov,
+      s_state_pred[2] + K[2] * innov
+  };
+
+  // Covariance update: P = (I - K*H)*P_pred
+  float KH[3][3], I[3][3] = {{1,0,0},{0,1,0},{0,0,1}}, P[3][3];
+  
+  // Compute KH = K*H
+  for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+          KH[i][j] = K[i] * H[j];
+      }
+  }
+  
+  // Compute P = (I - KH)*P_pred
+  for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+          P[i][j] = 0;
+          for (int k = 0; k < 3; k++) {
+              P[i][j] += (I[i][k] - KH[i][k]) * P_pred[k][j];
+          }
+      }
+  }
+
+  // ===== Post-Update Checks =====
+  // Ensure covariance matrix remains positive definite
+  for (int i = 0; i < 3; i++) {
+      if (P[i][i] < 0) P[i][i] = 0;
+  }
+  
+  // Symmetrize covariance matrix
+  for (int i = 0; i < 3; i++) {
+      for (int j = i+1; j < 3; j++) {
+          P[i][j] = P[j][i] = 0.5f * (P[i][j] + P[j][i]);
+      }
+  }
+
+  // ===== Update Persistent Variables =====
+  for (int i = 0; i < 3; i++) {
+      s_state_prev[i] = s_state[i];
+      s_state_out[i] = s_state[i];
+      for (int j = 0; j < 3; j++) {
+          P_prev[i][j] = P[i][j];
+      }
+  }
+}
+
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT); // Internal LED
+  pinMode(3, OUTPUT); // Buzzer connected to GP3 (5)
+
+  Serial.begin(115200);
+  Wire.begin();
+
+  // Try to initialize IMU
+  while (!bno08x.begin_I2C(0x4B)) {
+    digitalWrite(3, HIGH);
+    delay(100); 
+    digitalWrite(3, LOW);
+    delay(100);}
+
+  setReports(reportIntervalUs);
+
+  delay(100);
+
+  // Servo control
+  pwm.begin();
+  pwm.setOscillatorFrequency(27000000);
+  pwm.setPWMFreq(SERVO_FREQ);  // Set PWM frequency to 50 Hz
+
+  delay(100);
+
+  // Try to initialize Barometer
+  while (!MS5611.begin()){
+    digitalWrite(3, HIGH);
+    delay(100); 
+    digitalWrite(3, LOW);
+    delay(100); }
+
+  MS5611.reset(1);
+  MS5611.setOversampling(OSR_ULTRA_HIGH);
+  initial_altitude(&alt_init); // Initialize altitude
+
+  // Finish setup; beep
+  for (int i=0; i<2; i++) {
+    digitalWrite(3, HIGH);
+    delay(300);
+    digitalWrite(3,LOW);
+    delay(300);}
 }
 
 void loop() {
@@ -300,16 +493,13 @@ void loop() {
         break;
     }}
 
-    static long t_last = 0; // t_pre
-
-    long t_now = micros();
-    float dt_us = t_now - t_last;
-    t_last = t_now;
-
     // in rocket frame, with z up; rotation is ZYX
     float x_pitch = ypr.roll; // x is still x, just a differrent name
     float y_roll = ypr.pitch; // y is still y, just a differrent name
     float z_yaw = ypr.yaw;
+
+    float x_pitch_dot = ypr_dot.roll;
+    float y_roll_dot = ypr_dot.pitch;
     float z_yaw_dot = ypr_dot.yaw;
 
     acc_ZYX_body_to_inertial(x_pitch / RAD_TO_DEG, y_roll / RAD_TO_DEG, z_yaw / RAD_TO_DEG, &body_acc, &enu_acc); // ANGLE INPUTS IN RAD!!!
@@ -317,22 +507,39 @@ void loop() {
     float acc_enu_y = enu_acc.y;
     float acc_enu_z = enu_acc.z;
 
-    //order2integrator(&enu_acc, dt_us, &enu_pos, &enu_vel);
+    // Get pressure altitude
+    int result = MS5611.read();
+    float pressure = MS5611.getPressure();
+    float raw_altitude = pressure_altitude(pressure);
+    float adjusted_altitude = raw_altitude - alt_init;
+
+    // Clock tick tick
+    static long t_last = 0; // t_pre
+    long t_now = micros();
+    float dt_us = t_now - t_last;
+    t_last = t_now;
+
+    static float s_state_out[3] = {0, 0, 0}; // [altitude, vertical speed, accelerometer bias]
+    kalman_filter(adjusted_altitude, t_now, s_state_out); // t_now in microseconds or 1e-6 seconds
+    float estimated_altitude = s_state_out[0];
+    float estimated_vertical_speed = s_state_out[1];
+    float estimated_acceleration = s_state_out[2]; // no IMU used
 
     // if (Serial){
     // // Serial.print(t_now);           Serial.print(",");
     // // Serial.print(x_pitch);          Serial.print(",");
     // // Serial.print(y_roll);          Serial.print(",");
     // // Serial.print(z_yaw);          Serial.print(",");
-
     // // Serial.print(enu_acc.x);          Serial.print(",");
     // // Serial.print(enu_acc.y);          Serial.print(",");
-    // Serial.println(enu_acc.z);
+    // Serial.print(enu_acc.z);          Serial.print(",");
+    // Serial.print(estimated_acceleration); Serial.print(",");
+    // Serial.print(estimated_vertical_speed);          Serial.print(",");
+    // Serial.println(estimated_altitude);
     // }
 
     // Actuation factor
-    float vertical_speed = 30; // FILLER!!!
-    float actuation_factor = actuationFactor(vertical_speed);
+    float actuation_factor = actuationFactor(estimated_altitude ,estimated_vertical_speed);
 
     // Initialize saturation flags
     static bool x_pitch_saturation = false;
@@ -363,15 +570,25 @@ void loop() {
     }
 
     // PID control
-    float output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.05, 0., 0., false, false);
+    float output_z_yaw = 0.;
+    float output_y_roll_rate = 0.;
+    float output_y_roll = 0.;
+    float output_x_pitch_rate = 0.;
+    float output_x_pitch = 0.;
 
-    //float output_y_roll_rate = pidControl(0, y_roll, dt_us, 10., 4., 0., true, y_roll_saturation);
-    float output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 5., 0.5, 0., true, y_roll_saturation);
-    float output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, 0, dt_us, 0.1, 0., 0., false, false);
+    if (abs(actuation_factor) < 1e-3) { // When the rocket is on the launch rail
+        // All outputs already initialized to 0
+    }
+    else {
+        //pidControl(pid_error_t* error_save, float target, float measure, float dt_us, float kp, float ki, float kd, bool anti_wind, bool saturation)
+        output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.05, 0., 0., false, false);
 
-    //float output_x_pitch_rate = pidControl(0, x_pitch, dt_us, 10., 4., 0., true, x_pitch_saturation);
-    float output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 5., 0.5, 0., true, x_pitch_saturation);
-    float output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, 0, dt_us, 0.1, 0., 0., false, false);
+        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 5., 0.5, 0., true, y_roll_saturation);
+        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.1, 0., 0., false, false);
+
+        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 5., 0.5, 0., true, x_pitch_saturation);
+        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.1, 0., 0., false, false);
+    }
 
     float fin1_ang = (output_z_yaw + 0. + output_x_pitch);
     float fin2_ang = (output_z_yaw + output_y_roll + 0.);
@@ -382,7 +599,8 @@ void loop() {
     Serial.print(fin1_ang);           Serial.print(",");
     Serial.print(fin2_ang);          Serial.print(",");
     Serial.print(fin3_ang);          Serial.print(",");
-    Serial.println(fin4_ang);
+    Serial.print(fin4_ang);          Serial.print(",");
+    Serial.println(actuation_factor);
     }
 
     // Scaling factors to account for variable speed

@@ -386,7 +386,7 @@ void loop() {
     Serial.print(',');
     Serial.print(s_state_out[1]); // Estimated vertical speed in m/s
     Serial.print(',');
-    Serial.print(s_state_out[2]); //Estimated accelerometer bias in m/s^2
+    Serial.print(s_state_out[2]); //Estimated acceleration in m/s^2
     Serial.print(',');
     Serial.print(adjusted_altitude);
     Serial.print(',');
