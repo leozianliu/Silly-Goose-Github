@@ -117,6 +117,7 @@ long reportIntervalUs = 4000; // Top frequency is about 250Hz but this report is
 
 // Baro initialize
 float alt_init = 0; // Define initial altitude variable
+MS5611 MS5611(0x77); // Create an instance
 
 // Define initialization functions
 //----------------------------------------------------
@@ -326,12 +327,6 @@ float actuationFactor(float relative_height, float vertical_speed) {
   else {
       return pow((30 / min_control_speed), 2);; // max k_act is 3^2, since min speed is 10 m/s
   }
-}
-
-float pressure_altitude(float pressure_hpa) {
-  const float p0_hpa = 1013.25;
-  float altitude = 44330.0 * (1.0 - pow(pressure_hpa / p0_hpa, 1.0 / 5.255)); // in meters
-  return altitude;
 }
 
 void initial_altitude(float *alt_init){
@@ -615,7 +610,7 @@ void idle_state() { // Wait for command and open hatch
 
 void initial_state(float *alt_init, int *init_done) { // Initialize sensors
     initial_altitude(alt_init); // Initialize altitude
-    init_done = 1;
+    *init_done = 1;
 }
 
 void armed_state(float acc_enu_z, int *launch_detect) { // Wait for launch detection
@@ -623,7 +618,7 @@ void armed_state(float acc_enu_z, int *launch_detect) { // Wait for launch detec
 }
 
 void launch_state(int *descent_detect, float estimated_altitude, float estimated_vertical_speed, 
-                  float z_yaw_dot, float y_roll, float y_roll_dot, float x_pitch, float x_pitch_dot) { // Ascend and apogee
+                  float z_yaw_dot, float y_roll, float y_roll_dot, float x_pitch, float x_pitch_dot, float dt_us) { // Ascend and apogee
     // Actuation factor
     float actuation_factor = actuationFactor(estimated_altitude, estimated_vertical_speed);
 
@@ -722,16 +717,16 @@ void recovery_state() { // Descend and deploy parachute
     hatchServo(hatchOpen);
 
     // Fin aerobraking
-    fin1_ang = 30;
-    fin2_ang = -30;
-    fin3_ang = 30;
-    fin4_ang = -30;
+    float fin1_ang = 30;
+    float fin2_ang = -30;
+    float fin3_ang = 30;
+    float fin4_ang = -30;
 
     // raw actuator commands
-    servo1_ang = (int)(- fin1_ang / servo_ang_to_fin_ang);
-    servo2_ang = (int)(- fin2_ang / servo_ang_to_fin_ang);
-    servo3_ang = (int)(- fin3_ang / servo_ang_to_fin_ang);
-    servo4_ang = (int)(- fin4_ang / servo_ang_to_fin_ang);
+    int servo1_ang = (int)(- fin1_ang / servo_ang_to_fin_ang);
+    int servo2_ang = (int)(- fin2_ang / servo_ang_to_fin_ang);
+    int servo3_ang = (int)(- fin3_ang / servo_ang_to_fin_ang);
+    int servo4_ang = (int)(- fin4_ang / servo_ang_to_fin_ang);
 
     // real actuator commands
     int servo1_ang_out = outputSaturation(servo1_ang, servo_angle_max);
@@ -842,16 +837,13 @@ void loop() {
       }}
     server.handleClient(); // Handle incoming client requests, WIFI
 
-    static long t_last = 0; // t_pre
-
-    long t_now = micros();
-    float dt_us = t_now - t_last;
-    t_last = t_now;
-
     // in rocket frame, with z up; rotation is ZYX
     float x_pitch = ypr.roll; // x is still x, just a differrent name
     float y_roll = ypr.pitch; // y is still y, just a differrent name
     float z_yaw = ypr.yaw;
+
+    float x_pitch_dot = ypr_dot.roll;
+    float y_roll_dot = ypr_dot.pitch;
     float z_yaw_dot = ypr_dot.yaw;
 
     acc_ZYX_body_to_inertial(x_pitch / RAD_TO_DEG, y_roll / RAD_TO_DEG, z_yaw / RAD_TO_DEG, &body_acc, &enu_acc); // ANGLE INPUTS IN RAD!!!
@@ -915,9 +907,8 @@ void loop() {
         
       case 3: // Launch
         strcpy(state_disp, "Launched"); // Update state display
-        launch_state(filtered_altitude, x_pitch, y_roll, &descent_detect);
         launch_state(&descent_detect, estimated_altitude, estimated_vertical_speed, 
-                      z_yaw_dot, y_roll, y_roll_dot, x_pitch, x_pitch_dot);
+                      z_yaw_dot, y_roll, y_roll_dot, x_pitch, x_pitch_dot, dt_us);
         if(descent_detect) {
           state = 4;
           descent_detect = 0;
