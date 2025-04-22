@@ -180,6 +180,19 @@ void Wifi_init() {
     delay(100);
 }
 
+void disableWiFi() {
+    server.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+
+void enableWiFi() {
+    WiFi.mode(WIFI_AP);
+    WiFi.softAPConfig(IPAddress(192,168,1,1), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
+    WiFi.softAP(ap_ssid, ap_password);
+    server.begin();
+}
+
 // Define helper functions
 //----------------------------------------------------
 float lowPassFilter(float input, float alpha) {
@@ -637,14 +650,12 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     bool servo4_saturation = saturationDetection(servo4_ang, servo_angle_max);
     if (servo1_saturation || servo3_saturation) {
         x_pitch_saturation = true;
-        Serial.println("Saturation 13");
     }
     else {
         x_pitch_saturation = false;
     }
     if (servo2_saturation || servo4_saturation) {
         y_roll_saturation = true;
-        Serial.println("Saturation 24");
     }
     else {
         y_roll_saturation = false;
@@ -676,13 +687,13 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     float fin3_ang = (output_z_yaw + 0. - output_x_pitch);
     float fin4_ang = (output_z_yaw - output_y_roll + 0.);
 
-    if (Serial){
-    Serial.print(fin1_ang);           Serial.print(",");
-    Serial.print(fin2_ang);          Serial.print(",");
-    Serial.print(fin3_ang);          Serial.print(",");
-    Serial.print(fin4_ang);          Serial.print(",");
-    Serial.println(actuation_factor);
-    }
+    // if (Serial){
+    // Serial.print(fin1_ang);           Serial.print(",");
+    // Serial.print(fin2_ang);          Serial.print(",");
+    // Serial.print(fin3_ang);          Serial.print(",");
+    // Serial.print(fin4_ang);          Serial.print(",");
+    // Serial.println(actuation_factor);
+    // }
 
     // Scaling factors to account for variable speed
     fin1_ang = fin1_ang * actuation_factor;
@@ -896,6 +907,7 @@ void loop() {
         strcpy(state_disp, "Armed"); // Update state display
         armed_state(acc_enu_z, &launch_detect);
         if(launch_detect) { // Launch detection
+          disableWiFi(); // Disable WiFi before entering launch state
           state = 3;
           launch_detect = 0;
         } else if(abort_cmd) { // Abort command
@@ -916,6 +928,7 @@ void loop() {
         break;
         
       case 4: // Recovery
+        //enableWiFi();  // Re-enable WiFi when entering recovery
         strcpy(state_disp, "Recovery"); // Update state display
         recovery_state();
         if(reset_cmd) {
