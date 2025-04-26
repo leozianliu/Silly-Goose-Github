@@ -628,6 +628,9 @@ void initial_state(float *alt_init, int *init_done) { // Initialize sensors
 
 void armed_state(float acc_enu_z, int *launch_detect) { // Wait for launch detection
     launchDetect(acc_enu_z, launch_detect);
+    
+    int servo_angles_out[4] = {0, 0, 0, 0}; // set target fin angles to 0
+    setIdealAngles(servo_angles_out);
 }
 
 void launch_state(int *descent_detect, float estimated_altitude, float estimated_vertical_speed, 
@@ -713,7 +716,7 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     int servo3_ang_out = outputSaturation(servo3_ang, servo_angle_max);
     int servo4_ang_out = outputSaturation(servo4_ang, servo_angle_max);
 
-    // dfine desired angles for the 4 servos
+    // define desired angles for the 4 servos
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
   
@@ -923,14 +926,17 @@ void loop() {
                       z_yaw_dot, y_roll, y_roll_dot, x_pitch, x_pitch_dot, dt_us);
         if(descent_detect) {
           state = 4;
-          descent_detect = 0;
+          // descent_detect = 0;
         }
         break;
         
       case 4: // Recovery
-        //enableWiFi();  // Re-enable WiFi when entering recovery
         strcpy(state_disp, "Recovery"); // Update state display
         recovery_state();
+        if(descent_detect) {
+          enableWiFi();  // Re-enable WiFi when entering recovery
+          descent_detect = 0;
+        }
         if(reset_cmd) {
           state = 0;
           reset_cmd = 0;
