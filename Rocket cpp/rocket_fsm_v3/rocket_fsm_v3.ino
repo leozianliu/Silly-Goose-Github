@@ -201,13 +201,6 @@ void disableWiFi() {
     WiFi.mode(WIFI_OFF);
 }
 
-void enableWiFi() {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(IPAddress(192,168,1,1), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
-    WiFi.softAP(ap_ssid, ap_password);
-    server.begin();
-}
-
 // Define helper functions
 //----------------------------------------------------
 float lowPassFilter(float input, float alpha) {
@@ -378,11 +371,11 @@ void initial_altitude(float *alt_init){
   }
 }
 
-void writeDataSD(double time_us, float raw_altitude, float estimated_speed, float acc_enu_z, 
+void writeDataSD(double time_ms, float raw_altitude, float estimated_speed, float acc_enu_z, 
                  float x_pitch, float y_roll, float z_yaw, float x_pitch_dot, float y_roll_dot, 
                  float z_yaw_dot, float pid2_x_output, float pid2_y_output, float pid1_z_output,
                  int servo1_ang, int servo2_ang, int servo3_ang, int servo4_ang) {
-  String dataString = String(time_us)  + "," + 
+  String dataString = String(time_ms)  + "," + 
                       String(raw_altitude) + "," +
                       String(estimated_speed) + "," +
                       String(acc_enu_z) + "," +
@@ -393,7 +386,7 @@ void writeDataSD(double time_us, float raw_altitude, float estimated_speed, floa
                       String(y_roll_dot) + "," +
                       String(z_yaw_dot) + "," +
                       String(pid2_x_output) + "," +
-                      String(pid2_y_out) + "," +
+                      String(pid2_y_output) + "," +
                       String(pid1_z_output) + "," +
                       String(servo1_ang) + "," +
                       String(servo2_ang) + "," +
@@ -680,7 +673,7 @@ void armed_state(float acc_enu_z, int *launch_detect) { // Wait for launch detec
 
 void launch_state(int *descent_detect, float estimated_altitude, float estimated_vertical_speed, 
                   float z_yaw, float z_yaw_dot, float y_roll, float y_roll_dot, float x_pitch, float x_pitch_dot, 
-                  float dt_us, long time_us, float raw_alt, float acc_enu_z) { // Ascend and apogee
+                  float dt_us, long time_us, float raw_altitude, float acc_enu_z) { // Ascend and apogee
     // Actuation factor
     float actuation_factor = actuationFactor(estimated_altitude, estimated_vertical_speed);
 
@@ -766,12 +759,14 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
   
+    // detect descent to trigger recovery state
     descentDetect(estimated_altitude, x_pitch, y_roll, descent_detect);
 
+    // write data to SD card
     writeDataSD(millis(), raw_altitude, estimated_vertical_speed, acc_enu_z, 
     x_pitch, y_roll, z_yaw, x_pitch_dot, y_roll_dot, z_yaw_dot,
     output_x_pitch, output_y_roll, output_z_yaw,
-    servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out);
+    fin1_ang, fin2_ang, fin3_ang, fin4_ang);
 }
 
 void recovery_state() { // Descend and deploy parachute
@@ -803,7 +798,8 @@ void recovery_state() { // Descend and deploy parachute
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
 
-    if ((time - time_pre) > 10000) {
+    if ((time - time_pre) > 30000) {
+        beep3();
         beep3();
         time_pre = time;
     }
@@ -978,17 +974,13 @@ void loop() {
                       z_yaw_dot, y_roll, y_roll_dot, x_pitch, x_pitch_dot, dt_us, t_now, adjusted_altitude, acc_enu_z);
         if(descent_detect) {
           state = 4;
-          // descent_detect = 0;
+          descent_detect = 0;
         }
         break;
         
       case 4: // Recovery
         strcpy(state_disp, "Recovery"); // Update state display
         recovery_state();
-        if(descent_detect) {
-          enableWiFi();  // Re-enable WiFi when entering recovery
-          descent_detect = 0;
-        }
         if(reset_cmd) {
           state = 0;
           reset_cmd = 0;

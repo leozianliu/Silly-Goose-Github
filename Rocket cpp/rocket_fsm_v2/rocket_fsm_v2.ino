@@ -2,6 +2,8 @@
 #include <WebServer.h>
 #include <cstring>
 #include <Arduino.h>
+#include <SPI.h>
+#include <SD.h>
 #include <math.h>
 #include <Wire.h>
 #include <Adafruit_BNO08x.h>
@@ -32,7 +34,9 @@ const int end_angle_n_samples = 2; // Number of samples for angles used to detec
 const float end_angle_threshold = 45; // Threshold in deg for recovery condition
 const float end_height_from_apogee = 5; // Distance in meters from the recorded height to detect descent
 const int end_height_n_samples = 10; // Number of samples for height used to detect end of flight
-
+// SD file parameters
+const int chipSelect = 17; // for SD card reader
+const char filename[] = "FLIGHTLOG.csv";
 
 
 // Define global state machine variables
@@ -157,6 +161,17 @@ void Servo_init() {
     delay(100);
 }
 
+void SD_init() {
+    while (!SD.begin(chipSelect)) {
+      delay(100);
+    }
+    File dataFile = SD.open(filename, FILE_WRITE); // Write header
+    if (dataFile) {
+      dataFile.println("time,raw_altitude,estimated_speed,acc_enu_z,x_pitch,y_roll,z_yaw,x_pitch_dot,y_roll_dot,z_yaw_dot,pid2_x_output,pid2_y_out,pid1_z_output,servo1_ang,servo2_ang,servo3_ang,servo4_ang");
+      dataFile.close();
+    }
+}
+
 void Wifi_init() {
     // Set up Access Point
     WiFi.softAPConfig(IPAddress(192,168,1,1), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
@@ -184,13 +199,6 @@ void disableWiFi() {
     server.stop();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
-}
-
-void enableWiFi() {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(IPAddress(192,168,1,1), IPAddress(192,168,1,1), IPAddress(255,255,255,0));
-    WiFi.softAP(ap_ssid, ap_password);
-    server.begin();
 }
 
 // Define helper functions
@@ -360,6 +368,36 @@ void initial_altitude(float *alt_init){
         counter = 1; // Reset counter and done
         run_initial_altitude = false;
     }
+  }
+}
+
+void writeDataSD(double time_ms, float raw_altitude, float estimated_speed, float acc_enu_z, 
+                 float x_pitch, float y_roll, float z_yaw, float x_pitch_dot, float y_roll_dot, 
+                 float z_yaw_dot, float pid2_x_output, float pid2_y_output, float pid1_z_output,
+                 int servo1_ang, int servo2_ang, int servo3_ang, int servo4_ang) {
+  String dataString = String(time_ms)  + "," + 
+                      String(raw_altitude) + "," +
+                      String(estimated_speed) + "," +
+                      String(acc_enu_z) + "," +
+                      String(x_pitch) + "," +
+                      String(y_roll) + "," +
+                      String(z_yaw) + "," +
+                      String(x_pitch_dot) + "," +
+                      String(y_roll_dot) + "," +
+                      String(z_yaw_dot) + "," +
+                      String(pid2_x_output) + "," +
+                      String(pid2_y_output) + "," +
+                      String(pid1_z_output) + "," +
+                      String(servo1_ang) + "," +
+                      String(servo2_ang) + "," +
+                      String(servo3_ang) + "," +
+                      String(servo4_ang);
+
+  // Open file and append data
+  File dataFile = SD.open(filename, FILE_WRITE);
+  if (dataFile) {
+    dataFile.println(dataString);
+    dataFile.close();
   }
 }
 
@@ -634,7 +672,8 @@ void armed_state(float acc_enu_z, int *launch_detect) { // Wait for launch detec
 }
 
 void launch_state(int *descent_detect, float estimated_altitude, float estimated_vertical_speed, 
-                  float z_yaw_dot, float y_roll, float y_roll_dot, float x_pitch, float x_pitch_dot, float dt_us) { // Ascend and apogee
+                  float z_yaw, float z_yaw_dot, float y_roll, float y_roll_dot, float x_pitch, float x_pitch_dot, 
+                  float dt_us, long time_us, float raw_altitude, float acc_enu_z) { // Ascend and apogee
     // Actuation factor
     float actuation_factor = actuationFactor(estimated_altitude, estimated_vertical_speed);
 
@@ -720,7 +759,14 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
   
+    // detect descent to trigger recovery state
     descentDetect(estimated_altitude, x_pitch, y_roll, descent_detect);
+
+    // write data to SD card
+    writeDataSD(millis(), raw_altitude, estimated_vertical_speed, acc_enu_z, 
+    x_pitch, y_roll, z_yaw, x_pitch_dot, y_roll_dot, z_yaw_dot,
+    output_x_pitch, output_y_roll, output_z_yaw,
+    fin1_ang, fin2_ang, fin3_ang, fin4_ang);
 }
 
 void recovery_state() { // Descend and deploy parachute
@@ -752,7 +798,8 @@ void recovery_state() { // Descend and deploy parachute
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
 
-    if ((time - time_pre) > 10000) {
+    if ((time - time_pre) > 30000) {
+        beep3();
         beep3();
         time_pre = time;
     }
@@ -821,6 +868,7 @@ void setup() {
     IMU_init();
     Baro_init();
     Servo_init();
+    SD_init();
     Wifi_init();
 }
 
@@ -922,21 +970,17 @@ void loop() {
         
       case 3: // Launch
         strcpy(state_disp, "Launched"); // Update state display
-        launch_state(&descent_detect, estimated_altitude, estimated_vertical_speed, 
-                      z_yaw_dot, y_roll, y_roll_dot, x_pitch, x_pitch_dot, dt_us);
+        launch_state(&descent_detect, estimated_altitude, estimated_vertical_speed, z_yaw,
+                      z_yaw_dot, y_roll, y_roll_dot, x_pitch, x_pitch_dot, dt_us, t_now, adjusted_altitude, acc_enu_z);
         if(descent_detect) {
           state = 4;
-          // descent_detect = 0;
+          descent_detect = 0;
         }
         break;
         
       case 4: // Recovery
         strcpy(state_disp, "Recovery"); // Update state display
         recovery_state();
-        if(descent_detect) {
-          enableWiFi();  // Re-enable WiFi when entering recovery
-          descent_detect = 0;
-        }
         if(reset_cmd) {
           state = 0;
           reset_cmd = 0;
