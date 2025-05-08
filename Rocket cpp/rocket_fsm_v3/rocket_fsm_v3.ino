@@ -58,8 +58,6 @@ WebServer server(80);
 const int buzzerPin = 3;
 bool hatchOpen = LOW;
 char state_disp[20] = "Idle"; // Use a char array for state display
-bool IMUState = LOW;
-bool BaroState = LOW;
 
 // State handler prototype functions (just fillers will be updated below)
 //----------------------------------------------------
@@ -303,11 +301,11 @@ void setIdealAngles(int angles[]) {
   realServoAngles(3, servo4);  
   }
 
-float pidControl(pid_error_t* error_save, float target, float measure, float dt, float kp, float ki, float kd, bool anti_wind, bool saturation) { // dt in micro second
+float pidControl(pid_error_t* error_save, float target, float measure, float dt_us, float kp, float ki, float kd, bool anti_wind, bool saturation) { // dt in micro second
   float error_pre = error_save->error_pre;
   float error_sum = error_save->error_sum;
   float error = target - measure;
-  float error_dot = (error - error_pre) / (dt * 1e-6);
+  float error_dot = (error - error_pre) / (dt_us * 1e-6);
   
   error_save->error_pre = error;
 
@@ -603,8 +601,8 @@ void handleRoot() {
     html += "</style></head><body>";
     html += "<h1>Silly Goose Wifi Control</h1>";
     html += "<p>Current State: <b>" + String(state_disp) + "</b></p>";
-    html += "<p>IMU: <b>" + String(IMUState ? "Ok" : "Off") + "</b></p>";
-    html += "<p>Baro: <b>" + String(BaroState ? "Ok" : "Off") + "</b></p>";
+    // html += "<p>IMU: <b>" + String(IMUState ? "Ok" : "Off") + "</b></p>";
+    // html += "<p>Baro: <b>" + String(BaroState ? "Ok" : "Off") + "</b></p>";
     html += "<p>Hatch: <b>" + String(hatchOpen ? "Open" : "Closed") + "</b></p>";
     html += "<a href='/arm'><button>InitArm</button></a>&nbsp;";
     html += "<a href='/abort'><button>Abort</button></a>&nbsp;";
@@ -715,13 +713,13 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     }
     else {
         //pidControl(pid_error_t* error_save, float target, float measure, float dt_us, float kp, float ki, float kd, bool anti_wind, bool saturation)
-        output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.05, 0., 0., false, false);
+        output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.02, 0., 0., false, false);
 
-        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 5., 0.5, 0., true, y_roll_saturation);
-        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.1, 0., 0., false, false);
+        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 15., 1.0, 0., true, y_roll_saturation);
+        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.12, 0., 0., false, false);
 
-        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 5., 0.5, 0., true, x_pitch_saturation);
-        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.1, 0., 0., false, false);
+        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 15., 1.0, 0., true, x_pitch_saturation);
+        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.12, 0., 0., false, false);
     }
 
     float fin1_ang = (output_z_yaw + 0. + output_x_pitch);

@@ -715,13 +715,13 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     }
     else {
         //pidControl(pid_error_t* error_save, float target, float measure, float dt_us, float kp, float ki, float kd, bool anti_wind, bool saturation)
-        output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.05, 0., 0., false, false);
+        output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.02, 0., 0., false, false);
 
-        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 5., 0.5, 0., true, y_roll_saturation);
-        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.1, 0., 0., false, false);
+        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 15., 1.0, 0., true, y_roll_saturation);
+        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.12, 0., 0., false, false);
 
-        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 5., 0.5, 0., true, x_pitch_saturation);
-        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.1, 0., 0., false, false);
+        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 15., 1.0, 0., true, x_pitch_saturation);
+        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.12, 0., 0., false, false);
     }
 
     float fin1_ang = (output_z_yaw + 0. + output_x_pitch);
