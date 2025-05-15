@@ -16,18 +16,17 @@
 //----------------------------------------------------
 // Servo parameters
 const int servo1_iang = 75; // servo angle when 0 degree fin angle
-const int servo2_iang = 90; // servo angle when 0 degree fin angle
+const int servo2_iang = 96; // servo angle when 0 degree fin angle
 const int servo3_iang = 75; // servo angle when 0 degree fin angle
-const int servo4_iang = 90; // servo angle when 0 degree fin angle
+const int servo4_iang = 80; // servo angle when 0 degree fin angle
 // Kalman parameters
 const int n_samples = 100; // Number of samples for altitude initialization
 float R = 0.01; // Measurement noise covariance
 float acc_std = 0.1; // Acceleration noise standard deviation
 // Control parameters
 const int min_control_speed = 10; // Minimum vertical speed for control
-const float height_rail = 7.5; // Height of the launch rail in meters
+const float height_rail = 0; // Height of the launch rail in meters
 // Detection parameters
-//float alpha_baro = 0.15; // Smoothing factor for low pass filter
 float acc_z_threshold = 3; // Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
 const int end_angle_n_samples = 2; // Number of samples for angles used to detect end of flight
@@ -729,13 +728,16 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     float fin3_ang = (output_z_yaw + 0. - output_x_pitch);
     float fin4_ang = (output_z_yaw - output_y_roll + 0.);
 
-    // if (Serial){
+    if (Serial){
     // Serial.print(fin1_ang);           Serial.print(",");
     // Serial.print(fin2_ang);          Serial.print(",");
     // Serial.print(fin3_ang);          Serial.print(",");
     // Serial.print(fin4_ang);          Serial.print(",");
-    // Serial.println(actuation_factor);
-    // }
+    Serial.print(raw_altitude); Serial.print(",");
+    Serial.print(estimated_altitude); Serial.print(",");
+    Serial.print(estimated_vertical_speed); Serial.print(",");
+    Serial.println(actuation_factor);
+    }
 
     // Scaling factors to account for variable speed
     fin1_ang = fin1_ang * actuation_factor;

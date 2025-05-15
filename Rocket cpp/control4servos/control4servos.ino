@@ -18,9 +18,9 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
 const int servo1_iang = 75;
-const int servo2_iang = 90;
+const int servo2_iang = 96;
 const int servo3_iang = 75;
-const int servo4_iang = 90;
+const int servo4_iang = 80;
 
 void setup() {
   // Serial.begin(9600);
@@ -69,47 +69,47 @@ void loop() {
   // Set servo angles
   setIdealAngles(angles1);
 
-  delay(500); // Hold positions for 1 second
+  delay(500); // Hold positions for 0.5 second
 
-  // Reset all servos to 0 degrees
-  int angles2[4] = {60, -60, 60, -60};
-  setIdealAngles(angles2);
+  // // Reset all servos to 0 degrees
+  // int angles2[4] = {0, 0, 60, 15};
+  // setIdealAngles(angles2);
 
-  delay(500); // Hold positions for 1 second
+  // delay(500); // Hold positions for 0.5 second
 
-  // Reset all servos to 0 degrees
-  int angles3[4] = {0, 0, 0, 0};
-  setIdealAngles(angles3);
+  // // Reset all servos to 0 degrees
+  // int angles3[4] = {0, 0, 0, 0};
+  // setIdealAngles(angles3);
 
-  delay(500); // Hold positions for 1 second
+  // delay(500); // Hold positions for 1 second
 
-  // Reset all servos to 0 degrees
-  int angles4[4] = {-60, 60, -60, 60};
-  setIdealAngles(angles4);
+  // // Reset all servos to 0 degrees
+  // int angles4[4] = {-60, 60, -60, 60};
+  // setIdealAngles(angles4);
 
-  delay(500); // Hold positions for 1 second
+  // delay(500); // Hold positions for 1 second
 
-    // Reset all servos to 0 degrees
-  int angles5[4] = {-60, 0, 60, 0};
-  setIdealAngles(angles5);
+  //   // Reset all servos to 0 degrees
+  // int angles5[4] = {-60, 0, 60, 0};
+  // setIdealAngles(angles5);
 
-  delay(500); // Hold positions for 1 second
+  // delay(500); // Hold positions for 1 second
 
-    // Reset all servos to 0 degrees
-  int angles6[4] = {60, 0, -60, 0};
-  setIdealAngles(angles6);
+  //   // Reset all servos to 0 degrees
+  // int angles6[4] = {60, 0, -60, 0};
+  // setIdealAngles(angles6);
 
-  delay(200);
+  // delay(200);
 
-  // Reset all servos to 0 degrees
-  int angles7[4] = {-60, 0, 60, 0};
-  setIdealAngles(angles7);
+  // // Reset all servos to 0 degrees
+  // int angles7[4] = {-60, 0, 60, 0};
+  // setIdealAngles(angles7);
 
-  delay(200); // Hold positions for 1 second
+  // delay(200); // Hold positions for 1 second
 
-  // Reset all servos to 0 degrees
-  int angles8[4] = {0, 0, 0, 0};
-  setIdealAngles(angles8);
+  // // Reset all servos to 0 degrees
+  // int angles8[4] = {0, 0, 0, 0};
+  // setIdealAngles(angles8);
 
-  delay(500); // Hold positions for 1 second
+  // delay(500); // Hold positions for 1 second
 }

@@ -16,9 +16,9 @@
 //----------------------------------------------------
 // Servo parameters
 const int servo1_iang = 75; // servo angle when 0 degree fin angle
-const int servo2_iang = 90; // servo angle when 0 degree fin angle
+const int servo2_iang = 96; // servo angle when 0 degree fin angle
 const int servo3_iang = 75; // servo angle when 0 degree fin angle
-const int servo4_iang = 90; // servo angle when 0 degree fin angle
+const int servo4_iang = 80; // servo angle when 0 degree fin angle
 // Kalman parameters
 const int n_samples = 100; // Number of samples for altitude initialization
 float R = 0.01; // Measurement noise covariance
@@ -798,8 +798,7 @@ void recovery_state() { // Descend and deploy parachute
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
 
-    if ((time - time_pre) > 30000) {
-        beep3();
+    if ((time - time_pre) > 3000) {
         beep3();
         time_pre = time;
     }
