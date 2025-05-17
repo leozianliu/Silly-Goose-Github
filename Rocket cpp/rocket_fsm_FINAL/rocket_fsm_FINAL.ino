@@ -844,8 +844,8 @@ void descentDetect(float baro_alt, float ang_x, float ang_y, int *descent_detect
     if (count < end_angle_n_samples) count++;
 
     for (int i = 0; i < count; i++) {
-        if (ang_x_buffer[i] > end_angle_threshold) judge_x++;
-        if (ang_y_buffer[i] > end_angle_threshold) judge_y++;
+        if (fabs(ang_x_buffer[i]) > end_angle_threshold) judge_x++;  // Checks both + and - angles
+        if (fabs(ang_y_buffer[i]) > end_angle_threshold) judge_y++;  // Checks both + and - angles
     }
 
     if (judge_x == end_angle_n_samples || judge_y == end_angle_n_samples) {
