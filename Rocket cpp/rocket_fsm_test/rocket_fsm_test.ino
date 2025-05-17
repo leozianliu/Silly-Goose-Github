@@ -17,7 +17,7 @@
 // Servo parameters
 const int servo1_iang = 75; // servo angle when 0 degree fin angle
 const int servo2_iang = 96; // servo angle when 0 degree fin angle
-const int servo3_iang = 75; // servo angle when 0 degree fin angle
+const int servo3_iang = 70; // servo angle when 0 degree fin angle
 const int servo4_iang = 80; // servo angle when 0 degree fin angle
 // Kalman parameters
 const int n_samples = 100; // Number of samples for altitude initialization
@@ -27,6 +27,7 @@ float acc_std = 0.1; // Acceleration noise standard deviation
 const int min_control_speed = 10; // Minimum vertical speed for control
 const float height_rail = 0; // Height of the launch rail in meters
 // Detection parameters
+//float alpha_baro = 0.15; // Smoothing factor for low pass filter
 float acc_z_threshold = 3; // Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
 const int end_angle_n_samples = 2; // Number of samples for angles used to detect end of flight
@@ -109,7 +110,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVOMIN  150 // Minimum pulse length count (out of 4096)
 #define SERVOMAX  600 // Maximum pulse length count (out of 4096)
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
-const int servo_angle_max = 70;
+const int servo_angle_max = 60;
 const float servo_ang_to_fin_ang = 0.356;
 
 // IMU initialize
@@ -345,7 +346,7 @@ float actuationFactor(float relative_height, float vertical_speed) {
       return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
   }
   else {
-      return pow((30 / min_control_speed), 2);; // max k_act is 3^2, since min speed is 10 m/s
+      return pow((30 / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s
   }
 }
 
@@ -717,10 +718,10 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
         output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.02, 0., 0., false, false);
 
         output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 15., 1.0, 0., true, y_roll_saturation);
-        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.12, 0., 0., false, false);
+        output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.10, 0., 0., false, false);
 
         output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 15., 1.0, 0., true, x_pitch_saturation);
-        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.12, 0., 0., false, false);
+        output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.10, 0., 0., false, false);
     }
 
     float fin1_ang = (output_z_yaw + 0. + output_x_pitch);
@@ -728,16 +729,13 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     float fin3_ang = (output_z_yaw + 0. - output_x_pitch);
     float fin4_ang = (output_z_yaw - output_y_roll + 0.);
 
-    if (Serial){
+    // if (Serial){
     // Serial.print(fin1_ang);           Serial.print(",");
     // Serial.print(fin2_ang);          Serial.print(",");
     // Serial.print(fin3_ang);          Serial.print(",");
     // Serial.print(fin4_ang);          Serial.print(",");
-    Serial.print(raw_altitude); Serial.print(",");
-    Serial.print(estimated_altitude); Serial.print(",");
-    Serial.print(estimated_vertical_speed); Serial.print(",");
-    Serial.println(actuation_factor);
-    }
+    // Serial.println(actuation_factor);
+    // }
 
     // Scaling factors to account for variable speed
     fin1_ang = fin1_ang * actuation_factor;
@@ -779,10 +777,10 @@ void recovery_state() { // Descend and deploy parachute
     hatchServo(hatchOpen);
 
     // Fin aerobraking
-    float fin1_ang = 30;
-    float fin2_ang = -30;
-    float fin3_ang = 30;
-    float fin4_ang = -30;
+    float fin1_ang = 20;
+    float fin2_ang = -20;
+    float fin3_ang = 20;
+    float fin4_ang = -20;
 
     // raw actuator commands
     int servo1_ang = (int)(- fin1_ang / servo_ang_to_fin_ang);
@@ -800,8 +798,7 @@ void recovery_state() { // Descend and deploy parachute
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
 
-    if ((time - time_pre) > 30000) {
-        beep3();
+    if ((time - time_pre) > 3000) {
         beep3();
         time_pre = time;
     }

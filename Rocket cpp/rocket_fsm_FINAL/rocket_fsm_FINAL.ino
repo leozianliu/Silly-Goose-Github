@@ -17,7 +17,7 @@
 // Servo parameters
 const int servo1_iang = 75; // servo angle when 0 degree fin angle
 const int servo2_iang = 96; // servo angle when 0 degree fin angle
-const int servo3_iang = 75; // servo angle when 0 degree fin angle
+const int servo3_iang = 70; // servo angle when 0 degree fin angle
 const int servo4_iang = 80; // servo angle when 0 degree fin angle
 // Kalman parameters
 const int n_samples = 100; // Number of samples for altitude initialization
@@ -25,7 +25,7 @@ float R = 0.01; // Measurement noise covariance
 float acc_std = 0.1; // Acceleration noise standard deviation
 // Control parameters
 const int min_control_speed = 10; // Minimum vertical speed for control
-const float height_rail = 7.5; // Height of the launch rail in meters
+const float height_rail = 0; // Height of the launch rail in meters
 // Detection parameters
 //float alpha_baro = 0.15; // Smoothing factor for low pass filter
 float acc_z_threshold = 3; // Threshold for launch detection
@@ -110,7 +110,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVOMIN  150 // Minimum pulse length count (out of 4096)
 #define SERVOMAX  600 // Maximum pulse length count (out of 4096)
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
-const int servo_angle_max = 70;
+const int servo_angle_max = 60; // Fin angle max is +/- 21.36 degrees
 const float servo_ang_to_fin_ang = 0.356;
 
 // IMU initialize
@@ -346,7 +346,7 @@ float actuationFactor(float relative_height, float vertical_speed) {
       return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
   }
   else {
-      return pow((30 / min_control_speed), 2);; // max k_act is 3^2, since min speed is 10 m/s
+      return pow((30 / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s
   }
 }
 
@@ -777,10 +777,10 @@ void recovery_state() { // Descend and deploy parachute
     hatchServo(hatchOpen);
 
     // Fin aerobraking
-    float fin1_ang = 30;
-    float fin2_ang = -30;
-    float fin3_ang = 30;
-    float fin4_ang = -30;
+    float fin1_ang = 20;
+    float fin2_ang = -20;
+    float fin3_ang = 20;
+    float fin4_ang = -20;
 
     // raw actuator commands
     int servo1_ang = (int)(- fin1_ang / servo_ang_to_fin_ang);
