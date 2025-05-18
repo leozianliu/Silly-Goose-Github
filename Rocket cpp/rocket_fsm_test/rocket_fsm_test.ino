@@ -25,7 +25,7 @@ float R = 0.01; // Measurement noise covariance
 float acc_std = 0.1; // Acceleration noise standard deviation
 // Control parameters
 const float min_control_speed = 0.4; // Minimum vertical speed for control DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-const float height_rail = 0; // Height of the launch rail in meters
+const float height_rail = 7.5; // Height of the launch rail in meters
 // Detection parameters
 float acc_z_threshold = 3; // Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
@@ -342,10 +342,12 @@ float actuationFactor(float relative_height, float vertical_speed) {
       return 0.; // fins should not move when the rocket is on the launch rail
   }
   else if (vertical_speed > min_control_speed) {
-      return pow((1.0f / vertical_speed), 2); // PID tuned at 30 m/s DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      return 1.0f / vertical_speed // DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      //return pow((1.0f / vertical_speed), 2); // PID tuned at 30 m/s 
   }
   else {
-      return pow((1.0f / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      return 1.0f / min_control_speed // DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      //return pow((1.0f / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   }
 }
 
@@ -716,10 +718,10 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
         //pidControl(pid_error_t* error_save, float target, float measure, float dt_us, float kp, float ki, float kd, bool anti_wind, bool saturation)
         output_z_yaw = pidControl(&z_yaw_pid, 0, z_yaw_dot, dt_us, 0.02, 0., 0., false, false);
 
-        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 15., 1.0, 0., true, y_roll_saturation);
+        output_y_roll_rate = pidControl(&y_roll_pid, 0, y_roll, dt_us, 10., 1.0, 0., true, y_roll_saturation);
         output_y_roll = pidControl(&y_roll_rate_pid, output_y_roll_rate, y_roll_dot, dt_us, 0.10, 0., 0., false, false);
 
-        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 15., 1.0, 0., true, x_pitch_saturation);
+        output_x_pitch_rate = pidControl(&x_pitch_pid, 0, x_pitch, dt_us, 10., 1.0, 0., true, x_pitch_saturation);
         output_x_pitch = pidControl(&x_pitch_rate_pid, output_x_pitch_rate, x_pitch_dot, dt_us, 0.10, 0., 0., false, false);
     }
 
