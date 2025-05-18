@@ -24,10 +24,9 @@ const int n_samples = 100; // Number of samples for altitude initialization
 float R = 0.01; // Measurement noise covariance
 float acc_std = 0.1; // Acceleration noise standard deviation
 // Control parameters
-const int min_control_speed = 10; // Minimum vertical speed for control
+const float min_control_speed = 0.4; // Minimum vertical speed for control DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 const float height_rail = 0; // Height of the launch rail in meters
 // Detection parameters
-//float alpha_baro = 0.15; // Smoothing factor for low pass filter
 float acc_z_threshold = 3; // Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
 const int end_angle_n_samples = 2; // Number of samples for angles used to detect end of flight
@@ -339,14 +338,14 @@ bool saturationDetection(int demand, int limit) {
 }
 
 float actuationFactor(float relative_height, float vertical_speed) {
-  if (relative_height < height_rail) { // 7m is the height of the launch rail
+  if (relative_height < height_rail) { // 7.5 m is the height of the launch rail
       return 0.; // fins should not move when the rocket is on the launch rail
   }
   else if (vertical_speed > min_control_speed) {
-      return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
+      return pow((1.0f / vertical_speed), 2); // PID tuned at 30 m/s DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   }
   else {
-      return pow((30 / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s
+      return pow((1.0f / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   }
 }
 

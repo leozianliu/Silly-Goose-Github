@@ -24,11 +24,10 @@ const int n_samples = 100; // Number of samples for altitude initialization
 float R = 0.01; // Measurement noise covariance
 float acc_std = 0.1; // Acceleration noise standard deviation
 // Control parameters
-const int min_control_speed = 10; // Minimum vertical speed for control
-const float height_rail = 0; // Height of the launch rail in meters
+const float min_control_speed = 10.0; // Minimum vertical speed for control
+const float height_rail = 7.5; // Height of the launch rail in meters
 // Detection parameters
-//float alpha_baro = 0.15; // Smoothing factor for low pass filter
-float acc_z_threshold = 3; // Threshold for launch detection
+float acc_z_threshold = 3; // 3m/s2 Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
 const int end_angle_n_samples = 2; // Number of samples for angles used to detect end of flight
 const float end_angle_threshold = 45; // Threshold in deg for recovery condition
@@ -343,10 +342,10 @@ float actuationFactor(float relative_height, float vertical_speed) {
       return 0.; // fins should not move when the rocket is on the launch rail
   }
   else if (vertical_speed > min_control_speed) {
-      return pow((30 / vertical_speed), 2); // PID tuned at 30 m/s
+      return pow((30.0f / vertical_speed), 2); // PID tuned at 30 m/s
   }
   else {
-      return pow((30 / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s
+      return pow((30.0f / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s
   }
 }
 
