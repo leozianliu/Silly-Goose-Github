@@ -15,9 +15,9 @@
 // Define important global parameters
 //----------------------------------------------------
 // Servo parameters
-const int servo1_iang = 75; // servo angle when 0 degree fin angle
+const int servo1_iang = 85; // servo angle when 0 degree fin angle
 const int servo2_iang = 96; // servo angle when 0 degree fin angle
-const int servo3_iang = 70; // servo angle when 0 degree fin angle
+const int servo3_iang = 75; // servo angle when 0 degree fin angle
 const int servo4_iang = 80; // servo angle when 0 degree fin angle
 // Kalman parameters
 const int n_samples = 100; // Number of samples for altitude initialization
@@ -29,9 +29,9 @@ const float height_rail = 8.0; // Height of the launch rail in meters + 0.5m
 // Detection parameters
 float acc_z_threshold = 3; // 3m/s2 Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
-const int end_angle_n_samples = 2; // Number of samples for angles used to detect end of flight
+const int end_angle_n_samples = 8; // Number of samples for angles used to detect end of flight
 const float end_angle_threshold = 45; // Threshold in deg for recovery condition
-const float end_height_from_apogee = 5; // Distance in meters from the recorded height to detect descent
+const float end_height_from_apogee = 8; // Distance in meters from the recorded height to detect descent
 const int end_height_n_samples = 10; // Number of samples for height used to detect end of flight
 // SD file parameters
 const int chipSelect = 17; // for SD card reader
@@ -572,7 +572,7 @@ void kalman_filter(float baro_alt, unsigned long time_new, float s_state_out[3])
 void hatchServo(bool hatchOpen) {
   int servo_num_hatch = 8;
   if (hatchOpen) {
-    realServoAngles(servo_num_hatch, 50);
+    realServoAngles(servo_num_hatch, 70);
   } else {
     realServoAngles(servo_num_hatch, 110);
   }
@@ -729,14 +729,6 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     float fin2_ang = (output_z_yaw + output_y_roll + 0.);
     float fin3_ang = (output_z_yaw + 0. - output_x_pitch);
     float fin4_ang = (output_z_yaw - output_y_roll + 0.);
-
-    // if (Serial){
-    // Serial.print(fin1_ang);           Serial.print(",");
-    // Serial.print(fin2_ang);          Serial.print(",");
-    // Serial.print(fin3_ang);          Serial.print(",");
-    // Serial.print(fin4_ang);          Serial.print(",");
-    // Serial.println(actuation_factor);
-    // }
 
     // Scaling factors to account for variable speed
     fin1_ang = fin1_ang * actuation_factor;

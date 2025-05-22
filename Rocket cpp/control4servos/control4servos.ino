@@ -17,7 +17,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVOMAX  600 // Maximum pulse length count (out of 4096)
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
-const int servo1_iang = 75;
+const int servo1_iang = 85;
 const int servo2_iang = 96;
 const int servo3_iang = 75;
 const int servo4_iang = 80;
@@ -71,11 +71,11 @@ void loop() {
 
   delay(500); // Hold positions for 0.5 second
 
-  // // Reset all servos to 0 degrees
-  // int angles2[4] = {0, 0, 60, 15};
+  // // // Reset all servos to 0 degrees
+  // int angles2[4] = {40, 40, 40, 40};
   // setIdealAngles(angles2);
 
-  // delay(500); // Hold positions for 0.5 second
+  // delay(200); // Hold positions for 0.5 second
 
   // // Reset all servos to 0 degrees
   // int angles3[4] = {0, 0, 0, 0};

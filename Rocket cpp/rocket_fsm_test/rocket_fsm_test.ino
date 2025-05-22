@@ -15,23 +15,23 @@
 // Define important global parameters
 //----------------------------------------------------
 // Servo parameters
-const int servo1_iang = 75; // servo angle when 0 degree fin angle
-const int servo2_iang = 96; // servo angle when 0 degree fin angle
-const int servo3_iang = 70; // servo angle when 0 degree fin angle
-const int servo4_iang = 80; // servo angle when 0 degree fin angle
+const int servo1_iang = 85;
+const int servo2_iang = 96;
+const int servo3_iang = 75;
+const int servo4_iang = 80;
 // Kalman parameters
 const int n_samples = 100; // Number of samples for altitude initialization
 float R = 0.01; // Measurement noise covariance
 float acc_std = 0.1; // Acceleration noise standard deviation
 // Control parameters
-const float min_control_speed = 0.4; // Minimum vertical speed for control DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-const float height_rail = 7.5; // Height of the launch rail in meters
+const float min_control_speed = 10.0; // Minimum vertical speed for control DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+const float height_rail = 0; // Height of the launch rail in meters
 // Detection parameters
 float acc_z_threshold = 3; // Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
-const int end_angle_n_samples = 2; // Number of samples for angles used to detect end of flight
+const int end_angle_n_samples = 8; // Number of samples for angles used to detect end of flight
 const float end_angle_threshold = 45; // Threshold in deg for recovery condition
-const float end_height_from_apogee = 5; // Distance in meters from the recorded height to detect descent
+const float end_height_from_apogee = 10; // Distance in meters from the recorded height to detect descent
 const int end_height_n_samples = 10; // Number of samples for height used to detect end of flight
 // SD file parameters
 const int chipSelect = 17; // for SD card reader
@@ -338,16 +338,16 @@ bool saturationDetection(int demand, int limit) {
 }
 
 float actuationFactor(float relative_height, float vertical_speed) {
-  if (relative_height < height_rail) { // 7.5 m is the height of the launch rail
+  if (relative_height < height_rail) { // 7m is the height of the launch rail
       return 0.; // fins should not move when the rocket is on the launch rail
   }
   else if (vertical_speed > min_control_speed) {
-      return 1.0f / vertical_speed // DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      //return pow((1.0f / vertical_speed), 2); // PID tuned at 30 m/s 
+      return 30.0f / vertical_speed; // PID tuned at 30 m/s, linear gain scheduling
+      //return pow((30.0f / vertical_speed), 2); // PID tuned at 30 m/s
   }
   else {
-      return 1.0f / min_control_speed // DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      //return pow((1.0f / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s DUMMY VALUE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      return 30.0f / min_control_speed; // max k_act is 3, since min speed is 10 m/s
+      //return pow((30.0f / min_control_speed), 2); // max k_act is 3^2, since min speed is 10 m/s
   }
 }
 
@@ -572,7 +572,7 @@ void kalman_filter(float baro_alt, unsigned long time_new, float s_state_out[3])
 void hatchServo(bool hatchOpen) {
   int servo_num_hatch = 8;
   if (hatchOpen) {
-    realServoAngles(servo_num_hatch, 50);
+    realServoAngles(servo_num_hatch, 70);
   } else {
     realServoAngles(servo_num_hatch, 110);
   }
