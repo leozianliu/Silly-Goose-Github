@@ -29,7 +29,7 @@ const float height_rail = 8.0; // Height of the launch rail in meters + 0.5m
 // Detection parameters
 float acc_z_threshold = 3; // 3m/s2 Threshold for launch detection
 const int launch_n_samples = 10; // Number of samples for launch detection
-const int end_angle_n_samples = 8; // Number of samples for angles used to detect end of flight
+const int end_angle_n_samples = 10; // Number of samples for angles used to detect end of flight
 const float end_angle_threshold = 45; // Threshold in deg for recovery condition
 const float end_height_from_apogee = 8; // Distance in meters from the recorded height to detect descent
 const int end_height_n_samples = 10; // Number of samples for height used to detect end of flight
@@ -752,8 +752,13 @@ void launch_state(int *descent_detect, float estimated_altitude, float estimated
     int servo_angles_out[4] = {servo1_ang_out, servo2_ang_out, servo3_ang_out, servo4_ang_out}; 
     setIdealAngles(servo_angles_out);
   
-    // detect descent to trigger recovery state
-    descentDetect(estimated_altitude, x_pitch, y_roll, descent_detect);
+    if (abs(actuation_factor) < 1e-3) { // When the rocket is on the launch rail
+        *descent_detect = 0; // No descent detection on the launch rail
+    }
+    else {
+        // detect descent to trigger recovery state
+        descentDetect(estimated_altitude, x_pitch, y_roll, descent_detect);
+    }
 
     // write data to SD card
     writeDataSD(millis(), raw_altitude, estimated_vertical_speed, acc_enu_z, 
